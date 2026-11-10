@@ -1,4 +1,3 @@
-class_name VehicleFleetRegistry
 extends Node
 ## سجل أسطول مركبات مَسَالِك الخمس (Phase 2) مع إعدادات الفيزياء المستقلة
 

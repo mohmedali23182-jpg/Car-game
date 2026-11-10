@@ -1,5 +1,4 @@
 extends Node
-class_name PersistenceManager
 ## مَسَالِك — دروب اليمن | MASALIK — Roads of Yemen
 ## Atomic Save System V2 with Backup Recovery & Phase 1 Migration
 ## برمجة وتطوير معتز العلقمي – تعز – اليمن – 2026م

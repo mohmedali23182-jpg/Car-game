@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+
+.godot/
+*.keystore
+*.jks
+Masalik-3D/export_credentials.cfg
