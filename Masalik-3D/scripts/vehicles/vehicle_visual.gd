@@ -15,7 +15,8 @@ func material(color: String, metal := 0.0, rough := 0.7) -> StandardMaterial3D:
 func build(s: Dictionary, custom: Dictionary = {}) -> void:
 	spec=s
 	paint=material(str(custom.get("paint",s.defaultPaintHex)),0.38,0.31)
-	var glass := material("253e47",0.3,0.16);glass.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA;glass.albedo_color.a=0.40
+	var glass := material("20343f",0.35,0.18)
+	var windscreen := material("687f87",0.05,0.12);windscreen.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA;windscreen.albedo_color.a=0.12
 	var black := material("161d22",0.1,0.83)
 	var silver := material(str(custom.get("rim","a7adb2")),0.85,0.24)
 	var trim := material("424745",0.3,0.55)
@@ -56,7 +57,7 @@ func build(s: Dictionary, custom: Dictionary = {}) -> void:
 	if s.id=="barq": roof_front+=0.12
 	var roof_half := half*(0.86 if bus or classic else 0.77)
 	# Visible glazing, thin pillars, roof; the cabin is open internally.
-	quad([Vector3(-half*0.9,belt,cabin_front),Vector3(half*0.9,belt,cabin_front),Vector3(roof_half,roof,roof_front),Vector3(-roof_half,roof,roof_front)],glass)
+	quad([Vector3(-half*0.9,belt,cabin_front),Vector3(half*0.9,belt,cabin_front),Vector3(roof_half,roof,roof_front),Vector3(-roof_half,roof,roof_front)],windscreen)
 	quad([Vector3(-half*0.90,belt,cabin_rear),Vector3(-roof_half,roof,roof_rear),Vector3(roof_half,roof,roof_rear),Vector3(half*0.9,belt,cabin_rear)],glass)
 	part(Vector3(roof_half*2+0.10,0.10,maxf(0.3,roof_rear-roof_front)),Vector3(0,roof+0.045,(roof_front+roof_rear)*0.5),paint)
 	for side in [-1.0,1.0]:
@@ -107,7 +108,7 @@ func build(s: Dictionary, custom: Dictionary = {}) -> void:
 		part(Vector3(0.52,0.14,0.60),Vector3(side*width*0.22,0.5,roof_front+0.75),seat)
 		part(Vector3(0.5,0.55,0.14),Vector3(side*width*0.22,0.78,roof_front+1.0),seat)
 		part(Vector3(0.25,0.18,0.13),Vector3(side*width*0.22,1.14,roof_front+1.0),seat)
-	driver_wheel=Node3D.new();driver_wheel.position=Vector3(-width*0.22,belt+0.20,cabin_front+0.78);add_child(driver_wheel)
+	driver_wheel=Node3D.new();driver_wheel.position=Vector3(-width*0.22,minf(roof-0.35,1.22 if bus else belt+0.34),cabin_front+0.78);add_child(driver_wheel)
 	var steering := TorusMesh.new();steering.inner_radius=0.17;steering.outer_radius=0.20;steering.rings=24;steering.ring_segments=8
 	var sm := MeshInstance3D.new();sm.mesh=steering;sm.rotation.x=PI/2;sm.material_override=black;driver_wheel.add_child(sm)
 	part_on(driver_wheel,Vector3(0.32,0.04,0.06),Vector3.ZERO,trim)

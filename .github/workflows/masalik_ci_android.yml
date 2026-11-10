@@ -54,6 +54,12 @@ jobs:
           XDG_DATA_HOME=/tmp/masalik-ui timeout 120 godot --headless --path Masalik-3D --fixed-fps 60 res://tests/ui_smoke.tscn 2>&1 | tee build/ui-tests.log
           grep "UI SMOKE FINISHED" build/ui-tests.log
           ! grep -E 'SCRIPT ERROR|^ERROR:' build/ui-tests.log
+      - name: Render actual desktop runtime evidence
+        run: |
+          XDG_DATA_HOME=/tmp/masalik-render xvfb-run -a timeout 120 godot --path Masalik-3D res://tests/visual_capture.tscn --audio-driver Dummy 2>&1 | tee build/visual.log
+          grep VISUAL_CAPTURE_PASS build/visual.log
+          ! grep -E 'SCRIPT ERROR|^ERROR:' build/visual.log
+          find /tmp/masalik-render -name 'masalik-*.png' -exec cp {} build/android/ \;
       - uses: actions/cache@v4
         with:
           path: ~/.android/masalik-debug.keystore
@@ -87,12 +93,6 @@ jobs:
           grep "native-code: 'arm64-v8a'" build/android/badging.txt
           ! "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | grep android.permission.INTERNET
           sha256sum "$APK" | tee build/android/SHA256SUMS
-      - name: Render actual desktop runtime evidence
-        run: |
-          XDG_DATA_HOME=/tmp/masalik-render xvfb-run -a timeout 120 godot --path Masalik-3D res://tests/visual_capture.tscn --audio-driver Dummy 2>&1 | tee build/visual.log
-          grep VISUAL_CAPTURE_PASS build/visual.log
-          ! grep -E 'SCRIPT ERROR|^ERROR:' build/visual.log
-          find /tmp/masalik-render -name 'masalik-*.png' -exec cp {} build/android/ \;
       - uses: actions/upload-artifact@v4
         if: always()
         with:

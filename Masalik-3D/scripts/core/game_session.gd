@@ -175,7 +175,7 @@ func pause_menu() -> void:
 	for h in [6,12,18,22]: MasalikUI.button(times,str(h)+":00",func(): weather.hour=float(h);resume())
 	var weather_row := HFlowContainer.new();v.add_child(weather_row)
 	for key in ["clear","cloudy","light_rain","heavy_rain","fog","sandstorm"]:
-		MasalikUI.button(weather_row,key,func(): weather.current_weather_preset=key;resume())
+		MasalikUI.button(weather_row,{"clear":"صحو","cloudy":"غائم","light_rain":"مطر خفيف","heavy_rain":"مطر غزير","fog":"ضباب","sandstorm":"عاصفة رملية"}[key],func(): weather.current_weather_preset=key;resume())
 	MasalikUI.button(v,"العودة للقائمة",func(): save_session();get_tree().paused=false;get_tree().change_scene_to_file("res://scenes/menus/MainMenu.tscn"))
 func control_studio() -> void:
 	overlay.queue_free();overlay=null

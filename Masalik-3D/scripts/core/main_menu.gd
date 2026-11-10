@@ -108,8 +108,11 @@ func garage() -> void:
 	MasalikUI.slider(content,"ارتفاع التعليق",float(custom.get("height",0)), -0.08,0.18,func(v: float): set_custom("height",v))
 	var roof := CheckButton.new();roof.text="حامل أمتعة السقف";roof.button_pressed=bool(custom.get("roof",false));content.add_child(roof);roof.toggled.connect(func(on: bool): set_custom("roof",on);garage())
 	var tires := OptionButton.new();content.add_child(tires)
-	for name in ["all_terrain","mud_rock","sand_dune","highway_sport"]: tires.add_item(name)
-	tires.item_selected.connect(func(i: int): set_custom("tire",tires.get_item_text(i)))
+	var tire_names := {"all_terrain":"إطارات متعددة التضاريس","mud_rock":"إطارات الصخر والطين","sand_dune":"إطارات الكثبان الرملية","highway_sport":"إطارات الأسفلت الرياضية"}
+	for key in tire_names:
+		tires.add_item(tire_names[key]);tires.set_item_metadata(tires.item_count-1,key)
+		if key==str(custom.get("tire",spec.defaultTireType)): tires.select(tires.item_count-1)
+	tires.item_selected.connect(func(i: int): set_custom("tire",tires.get_item_metadata(i)))
 	var unlocked: bool=selected in PersistenceManager.save_data.unlocked
 	if unlocked:
 		MasalikUI.button(content,"اعتماد المركبة والقيادة",func(): PersistenceManager.save_data.selected_vehicle_id=selected;launch({}))
@@ -139,7 +142,7 @@ func settings() -> void:
 	MasalikUI.slider(content,"سرعة العودة",float(PersistenceManager.save_data.steering_return),0.5,6,func(v: float): PersistenceManager.save_data.steering_return=v)
 	MasalikUI.slider(content,"زاوية المقود",float(PersistenceManager.save_data.wheel_angle),90,360,func(v: float): PersistenceManager.save_data.wheel_angle=v)
 	for bus in ["Music","Engine","Effects","Environment"]:
-		MasalikUI.slider(content,bus,float(PersistenceManager.save_data.volumes.get(bus,0.8)),0,1,func(v: float): PersistenceManager.save_data.volumes[bus]=v)
+		MasalikUI.slider(content,{"Music":"الموسيقى","Engine":"صوت المحرك","Effects":"المؤثرات","Environment":"أصوات البيئة"}[bus],float(PersistenceManager.save_data.volumes.get(bus,0.8)),0,1,func(v: float): PersistenceManager.save_data.volumes[bus]=v)
 	MasalikUI.button(content,"تصدير ملف الحفظ",func(): save_dialog(false))
 	MasalikUI.button(content,"استيراد ملف حفظ",func(): save_dialog(true))
 	MasalikUI.button(content,"حفظ ورجوع",func(): PersistenceManager.save_data_atomic();home())
