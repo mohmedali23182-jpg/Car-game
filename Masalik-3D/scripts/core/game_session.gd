@@ -17,6 +17,7 @@ var save_clock := 0.0
 var tow: RigidBody3D
 var tow_attached := false
 var capture_clock := 0.0
+var mini_map: MasalikMap
 func _ready() -> void:
 	world=MasalikWorld.new();add_child(world)
 	missions=MasalikMissions.new();add_child(missions)
@@ -78,6 +79,7 @@ func build_hud() -> void:
 		for lamp in car.visual.headlights: lamp.visible=not lamp.visible)
 	MasalikUI.button(top,"خريطة",map_screen)
 	MasalikUI.button(top,"تصوير",photo_mode)
+	mini_map=MasalikMap.new();mini_map.world=world;mini_map.car=car;mini_map.position=Vector2(1020,90);mini_map.size=Vector2(220,150);hud.add_child(mini_map)
 	status=Label.new();status.position=Vector2(40,85);status.add_theme_font_size_override("font_size",22);hud.add_child(status)
 	navigation=Label.new();navigation.position=Vector2(40,145);navigation.size=Vector2(1100,85);navigation.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;hud.add_child(navigation)
 	var gears := VBoxContainer.new();gears.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT);gears.position=Vector2(-115,-120);hud.add_child(gears)
@@ -125,12 +127,12 @@ func _notification(what: int) -> void:
 func recover() -> void:
 	car.freeze=true;car.position=world.point_at(world.distance)+Vector3.UP*1.2;car.basis=world.basis_at(world.distance);car.linear_velocity=Vector3.ZERO;car.angular_velocity=Vector3.ZERO;car.freeze=false;controls.reset_input()
 func show_panel(title: String) -> VBoxContainer:
-	controls.reset_input();controls.hide();top.hide();status.hide();navigation.hide()
+	controls.reset_input();controls.hide();top.hide();status.hide();navigation.hide();mini_map.hide()
 	get_tree().paused=true
 	var v := MasalikUI.panel(hud,title);overlay=v.get_parent().get_parent();return v
 func resume() -> void:
 	if is_instance_valid(overlay): overlay.queue_free()
-	controls.editing=false;controls.reset_input();controls.show();top.show();status.show();navigation.show();get_tree().paused=false;camera.photo=false
+	controls.editing=false;controls.reset_input();controls.show();top.show();status.show();navigation.show();mini_map.show();get_tree().paused=false;camera.photo=false
 func pause_menu() -> void:
 	if is_instance_valid(overlay): return
 	var v := show_panel("استراحة على الطريق")
@@ -174,6 +176,7 @@ func control_studio() -> void:
 		PersistenceManager.save_data.layouts[PersistenceManager.save_data.active_layout]=controls.layout.duplicate(true);PersistenceManager.save_data_atomic();resume())
 func map_screen() -> void:
 	var v := show_panel("خريطة العالم — موقعك %.2f كم" % (world.distance/1000))
+	var map := MasalikMap.new();map.world=world;map.car=car;map.compact=false;map.custom_minimum_size=Vector2(800,270);v.add_child(map)
 	for i in range(world.regions.size()):
 		var r: Dictionary=world.regions[i]
 		MasalikUI.label(v,("◉ " if world.region_at(world.distance)==i else "○ ")+r.nameAr+" | %.1f – %.1f كم" % [float(r.startM)/1000,float(r.endM)/1000])

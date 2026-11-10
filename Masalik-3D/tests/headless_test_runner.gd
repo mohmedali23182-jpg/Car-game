@@ -31,6 +31,17 @@ func run() -> void:
 		await get_tree().process_frame
 		check(world.chunks.has(clampi(int(s/500),0,29)),"loads sector at "+str(s))
 		check(world.chunks.size()<=7,"bounded loaded sector count")
+	# Integration regression: ray contacts must work on actual generated road triangles,
+	# not only on a separate box. Wrong winding makes the player fall through.
+	for s in [40.0,2600.0,5400.0,8000.0,10500.0,13000.0,14900.0]:
+		world.update_chunks(s)
+		var road_car := RaycastVehicleBody.new();road_car.spec=registry.get_spec("shahiq")
+		road_car.position=world.point_at(s)+Vector3.UP*1.2;road_car.basis=world.basis_at(s);root.add_child(road_car)
+		road_car.set_drive_inputs(0,1,0,false)
+		for frame in range(120): await get_tree().physics_frame
+		check(road_car.grounded>=3,"native road supports wheels at "+str(s))
+		check(road_car.position.y>world.point_at(s).y-2,"no fall through generated terrain at "+str(s))
+		road_car.queue_free();await get_tree().process_frame
 	var store := root.get_node("PersistenceManager")
 	var before: Dictionary=store.save_data.duplicate(true)
 	store.save_data.coins=321;check(store.save_data_atomic(),"atomic initial save")

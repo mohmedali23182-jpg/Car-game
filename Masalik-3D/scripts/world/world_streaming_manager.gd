@@ -24,7 +24,12 @@ func _ready() -> void:
 		var m := StandardMaterial3D.new()
 		m.albedo_color = {"asphalt": Color("42464a"), "mud": Color("735a3e"), "sand": Color("c6a572"), "terrain": Color("877654"), "stone": Color("9a8064"), "window": Color("223642"), "green": Color("667948"), "gold": Color("e9c475"), "sea": Color("277e92")}[key]
 		m.roughness = 0.9
-		materials[key] = m
+		if key in ["terrain", "sand", "green"]:
+			var shader_material := ShaderMaterial.new()
+			shader_material.shader=load("res://assets/shaders/terrain.gdshader")
+			shader_material.set_shader_parameter("base_color",m.albedo_color)
+			materials[key]=shader_material
+		else: materials[key] = m
 	update_chunks(distance)
 func build_path() -> void:
 	points.clear()
@@ -88,7 +93,7 @@ func update_chunks(s: float) -> void:
 	for id in range(maxi(center-radius, 0), mini(center+radius+1, 30)):
 		if not chunks.has(id): chunks[id] = build_chunk(id)
 func triangle(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
-	st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+	st.add_vertex(a); st.add_vertex(c); st.add_vertex(b)
 func mesh_body(parent: Node3D, st: SurfaceTool, material: Material, surface: String) -> MeshInstance3D:
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
@@ -154,8 +159,50 @@ func build_chunk(id: int) -> Node3D:
 			for wx in [-1.8,0.0,1.8]:
 				box_node(root,Vector3(0.65,1.0,0.08),center+Vector3(wx,1.5+floor_id*2.9,2.55),materials.window,false)
 	if region == 4:
-		box_node(root,Vector3(500,0.1,650),point_at(id*CHUNK+250)+Vector3(-300,-10,0),materials.sea,false)
+		var sea := MeshInstance3D.new();var plane := PlaneMesh.new();plane.size=Vector2(900,900);plane.subdivide_width=24;plane.subdivide_depth=24
+		sea.mesh=plane;sea.position=point_at(id*CHUNK+250)+Vector3(-480,-8,0)
+		var water := ShaderMaterial.new();water.shader=load("res://assets/shaders/sea.gdshader");sea.material_override=water;root.add_child(sea)
+	# Vegetation and natural rocks, deterministic at every sector boundary.
+	var trunks: Array[Transform3D]=[];var crowns: Array[Transform3D]=[]
+	for i in range(first+6,end,7):
+		var lateral := (18.0+float(i%4)*12.0)*(-1.0 if i%2==0 else 1.0)
+		var center := height_point(i,lateral)
+		if region not in [1,5]:
+			trunks.append(Transform3D(Basis.IDENTITY,center+Vector3.UP*2.0))
+			crowns.append(Transform3D(Basis.IDENTITY.scaled(Vector3(1.0+(i%3)*0.2,1,1)),center+Vector3.UP*4.2))
+		elif i%3==0:
+			var rock := MeshInstance3D.new();var stone := SphereMesh.new();stone.radius=1.2+float(i%3);stone.height=stone.radius*1.4;stone.radial_segments=8;stone.rings=4
+			rock.mesh=stone;rock.position=center;rock.material_override=materials.terrain;root.add_child(rock);rock.create_trimesh_collision();rock.visibility_range_end=400
+	if not trunks.is_empty():
+		var trunk := CylinderMesh.new();trunk.top_radius=0.16;trunk.bottom_radius=0.25;trunk.height=4;trunk.radial_segments=6
+		instances(root,trunk,materials.stone,trunks,350)
+		var crown := SphereMesh.new();crown.radius=2.2;crown.height=2.3;crown.radial_segments=8;crown.rings=4
+		instances(root,crown,materials.green,crowns,350)
+	# Drive-through tunnel portal with collidable roof and sides; clear width 11m.
+	if id==6:
+		for i in range(first+30,first+50,4):
+			var frame := Node3D.new();root.add_child(frame);frame.position=points[i];frame.basis=basis_at(i*STEP)
+			for side in [-1.0,1.0]: box_node(frame,Vector3(1.2,7,16),Vector3(side*6.2,3.5,0),materials.stone,true)
+			box_node(frame,Vector3(13.5,1.2,16),Vector3(0,7.2,0),materials.stone,true)
+	pack_architecture(root)
 	return root
+func pack_architecture(root: Node3D) -> void:
+	var groups: Dictionary={}
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		if not mi.mesh is BoxMesh: continue
+		var mat: Material=mi.material_override
+		var key := mat.get_instance_id()
+		if not groups.has(key): groups[key]={"material":mat,"transforms":[]}
+		var transform: Transform3D=root.global_transform.affine_inverse()*mi.global_transform
+		transform.basis=transform.basis.scaled(mi.mesh.size)
+		groups[key].transforms.append(transform)
+		# Preserve collision child bodies; only the old visual draw is hidden.
+		mi.hide()
+	for group in groups.values():
+		var transforms: Array[Transform3D]=[]
+		transforms.assign(group.transforms)
+		var cube := BoxMesh.new();cube.size=Vector3.ONE
+		instances(root,cube,group.material,transforms,650)
 func instances(parent: Node3D, mesh: Mesh, mat: Material, transforms: Array[Transform3D], max_distance: float) -> void:
 	var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = mesh; mm.instance_count = transforms.size()

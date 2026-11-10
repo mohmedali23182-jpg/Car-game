@@ -29,7 +29,14 @@ func _ready() -> void:
 func rect_for(key: String) -> Rect2:
 	var c: Array=layout[key]
 	var sz := float(c[2])
-	return Rect2(Vector2(float(c[0])*size.x,float(c[1])*size.y)-Vector2.ONE*sz*0.5,Vector2.ONE*sz)
+	var center := Vector2(float(c[0])*size.x,float(c[1])*size.y)
+	var margin := Vector2(24,24)
+	var safe := DisplayServer.get_display_safe_area()
+	if safe.size.x > 0 and DisplayServer.window_get_size().x > 0:
+		var factor := size / Vector2(DisplayServer.window_get_size())
+		margin.x = maxf(24,float(safe.position.x)*factor.x+8)
+	center = center.clamp(Vector2.ONE*sz*0.5+margin,size-Vector2.ONE*sz*0.5-margin)
+	return Rect2(center-Vector2.ONE*sz*0.5,Vector2.ONE*sz)
 func reset_input() -> void:
 	pointers.clear();finger_positions.clear();wheel_finger=-1;steer=0;throttle=0;brake=0;handbrake=false;wheel_angle=0;queue_redraw()
 func _notification(what: int) -> void:

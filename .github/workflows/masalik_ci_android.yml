@@ -44,16 +44,25 @@ jobs:
           XDG_DATA_HOME=/tmp/masalik-test timeout 120 godot --headless --path Masalik-3D --fixed-fps 60 res://tests/headless_test_runner.tscn 2>&1 | tee build/tests.log
           grep 'failures=0' build/tests.log
           ! grep -E 'SCRIPT ERROR|^ERROR:' build/tests.log
+      - name: Native UI smoke test
+        run: |
+          XDG_DATA_HOME=/tmp/masalik-ui timeout 120 godot --headless --path Masalik-3D --fixed-fps 60 res://tests/ui_smoke.tscn 2>&1 | tee build/ui-tests.log
+          grep "UI SMOKE FINISHED" build/ui-tests.log
+          ! grep -E 'SCRIPT ERROR|^ERROR:' build/ui-tests.log
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/masalik-debug.keystore
+          key: masalik-debug-signing-v1
       - name: Configure Android editor paths
         run: |
           mkdir -p ~/.config/godot ~/.android
-          test -f ~/.android/debug.keystore || keytool -genkeypair -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
+          test -f ~/.android/masalik-debug.keystore || keytool -genkeypair -keystore ~/.android/masalik-debug.keystore -storepass android -alias androiddebugkey -keypass android -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
           cat > ~/.config/godot/editor_settings-4.6.tres <<SETTINGS
           [gd_resource type="EditorSettings" format=3]
           [resource]
           export/android/android_sdk_path = "$ANDROID_HOME"
           export/android/java_sdk_path = "$JAVA_HOME"
-          export/android/debug_keystore = "$HOME/.android/debug.keystore"
+          export/android/debug_keystore = "$HOME/.android/masalik-debug.keystore"
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           SETTINGS
@@ -83,8 +92,10 @@ jobs:
             build/android/
             build/*.log
       - name: Publish verified test build only
-        if: startsWith(github.ref, 'refs/tags/masalik-test-')
+        if: success() && (github.ref == 'refs/heads/feat/masalik-native-offline-complete' || startsWith(github.ref, 'refs/tags/masalik-test-'))
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" build/android/* --prerelease --title 'MASALIK native test build' --notes 'Native offline Godot ARM64 development APK. Debug signed. Desktop/headless checks only; physical Android first-launch airplane-mode and 30-minute performance acceptance remain pending. Not final 1.0.0 acceptance.'
+          TAG="masalik-test-1.0.0-dev-${GITHUB_RUN_NUMBER}"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then TAG="$GITHUB_REF_NAME"; fi
+          gh release create "$TAG" build/android/* --target "$GITHUB_SHA" --prerelease --title 'MASALIK native test build' --notes 'Native offline Godot ARM64 development APK. Debug signed. Desktop/headless checks only; physical Android first-launch airplane-mode and 30-minute performance acceptance remain pending. Not final 1.0.0 acceptance.'
