@@ -1,32 +1,34 @@
 class_name MasalikCameraController
 extends Camera3D
-## يدير الكاميرات الثلاث مع تنعيم الحركة ومنع اختراق التضاريس
-
-enum CameraView { CHASE_FOLLOW, COCKPIT_INTERIOR, HIGH_WIDE_ANGLE }
-
-@export var target_vehicle: Node3D
-@export var current_view: CameraView = CameraView.CHASE_FOLLOW
-@export var smooth_speed: float = 8.5
-
-func cycle_camera_view() -> void:
-	current_view = ((int(current_view) + 1) % 3) as CameraView
-
-func _physics_process(delta: float) -> void:
-	if target_vehicle == null:
-		return
-
-	var basis_t: Basis = target_vehicle.global_transform.basis
-	var pos_t: Vector3 = target_vehicle.global_position
-
-	match current_view:
-		CameraView.CHASE_FOLLOW:
-			var desired_pos := pos_t + basis_t.z * 7.2 + Vector3.UP * 2.85
-			global_position = global_position.lerp(desired_pos, clampf(smooth_speed * delta, 0.0, 1.0))
-			look_at(pos_t + Vector3.UP * 1.25 - basis_t.z * 3.0, Vector3.UP)
-		CameraView.COCKPIT_INTERIOR:
-			global_position = pos_t - basis_t.x * 0.42 + Vector3.UP * 1.58 - basis_t.z * 0.05
-			look_at(global_position - basis_t.z * 12.0, basis_t.y)
-		CameraView.HIGH_WIDE_ANGLE:
-			var desired_wide := pos_t + basis_t.z * 13.5 + Vector3.UP * 6.4
-			global_position = global_position.lerp(desired_wide, clampf(smooth_speed * 0.75 * delta, 0.0, 1.0))
-			look_at(pos_t + Vector3.UP * 1.5 - basis_t.z * 5.0, Vector3.UP)
+var target_vehicle: RigidBody3D
+var current_view := 0
+var orbit := Vector2(0.3,0.2)
+var photo := false
+var orbit_distance := 8.0
+var offsets := [Vector3(0,2.8,7),Vector3(0,5,13),Vector3(-0.4,1.2,-0.3),Vector3(0,0.7,-2.3),Vector3(7,2.0,0),Vector3(0,5,8)]
+func cycle_camera_view() -> void: current_view=(current_view+1)%6
+func _unhandled_input(event: InputEvent) -> void:
+	if current_view!=5 and not photo: return
+	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT): orbit+=event.relative*0.004
+	if event is InputEventScreenDrag: orbit+=event.relative*0.004
+	if event is InputEventMagnifyGesture: orbit_distance=clampf(orbit_distance/event.factor,2,40)
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index==MOUSE_BUTTON_WHEEL_UP: orbit_distance=maxf(2,orbit_distance-1)
+		if event.button_index==MOUSE_BUTTON_WHEEL_DOWN: orbit_distance=minf(40,orbit_distance+1)
+func _process(delta: float) -> void:
+	if not is_instance_valid(target_vehicle): return
+	var pos := target_vehicle.global_position
+	var offset: Vector3=offsets[current_view]
+	if current_view==5 or photo:
+		offset=Vector3(sin(orbit.x)*cos(orbit.y),sin(clampf(orbit.y,-0.1,1.4)),cos(orbit.x)*cos(orbit.y))*orbit_distance
+	var desired := pos+target_vehicle.global_basis*offset
+	if current_view not in [2,3]:
+		var query := PhysicsRayQueryParameters3D.create(pos+Vector3.UP,desired)
+		query.exclude=[target_vehicle.get_rid()]
+		var hit := target_vehicle.get_world_3d().direct_space_state.intersect_ray(query)
+		if not hit.is_empty(): desired=hit.position+hit.normal*0.3
+	global_position=desired if current_view in [2,3] else global_position.lerp(desired,1-exp(-8*delta))
+	var aim := pos+Vector3.UP*0.8
+	if current_view in [2,3]: aim=global_position-target_vehicle.global_basis.z*20
+	if global_position.distance_to(aim)>0.1: look_at(aim,Vector3.UP)
+	fov=lerpf(fov,68+minf(target_vehicle.linear_velocity.length()*0.35,14),1-exp(-3*delta))

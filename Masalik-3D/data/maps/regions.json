@@ -1,0 +1,77 @@
+[
+  {
+    "id": "taiz_highlands",
+    "nameAr": "مرتفعات تعز (طريق القمم)",
+    "subtitleAr": "مدرجات زراعية وقرى حجرية وضباب صباحي",
+    "startM": 0,
+    "endM": 2500,
+    "baseAltitudeM": 1450,
+    "dominantSurfaces": [
+      "asphalt",
+      "dirt"
+    ]
+  },
+  {
+    "id": "naqil_sahab",
+    "nameAr": "نقيل السحاب",
+    "subtitleAr": "عقبة جبلية شاهقة وأنفاق صخرية وجسور أودية",
+    "startM": 2500,
+    "endM": 5200,
+    "baseAltitudeM": 1850,
+    "dominantSurfaces": [
+      "asphalt",
+      "rock",
+      "gravel"
+    ]
+  },
+  {
+    "id": "wadi_rayhan",
+    "nameAr": "وادي الريحان",
+    "subtitleAr": "وادٍ صخري ومجارٍ مائية وطرق حصوية وطينية",
+    "startM": 5200,
+    "endM": 7800,
+    "baseAltitudeM": 1120,
+    "dominantSurfaces": [
+      "gravel",
+      "mud",
+      "rock"
+    ]
+  },
+  {
+    "id": "tihama_plains",
+    "nameAr": "سهول تهامة",
+    "subtitleAr": "طريق تجاري واسع ومزارع سهلية وحركة شاحنات",
+    "startM": 7800,
+    "endM": 10200,
+    "baseAltitudeM": 220,
+    "dominantSurfaces": [
+      "asphalt",
+      "sand"
+    ]
+  },
+  {
+    "id": "coastal_road",
+    "nameAr": "الطريق الساحلي",
+    "subtitleAr": "طريق إسفلتي بمحاذاة البحر ومرافئ صخرية",
+    "startM": 10200,
+    "endM": 12600,
+    "baseAltitudeM": 18,
+    "dominantSurfaces": [
+      "asphalt",
+      "sand"
+    ]
+  },
+  {
+    "id": "masalik_desert",
+    "nameAr": "صحراء المسالك",
+    "subtitleAr": "كثبان رملية مفتوحة وعواصف غبار وممرات جافة",
+    "startM": 12600,
+    "endM": 15000,
+    "baseAltitudeM": 480,
+    "dominantSurfaces": [
+      "sand",
+      "gravel",
+      "rock"
+    ]
+  }
+]

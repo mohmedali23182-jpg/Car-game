@@ -1,107 +1,61 @@
 extends Node
-## مَسَالِك — دروب اليمن | MASALIK — Roads of Yemen
-## Atomic Save System V2 with Backup Recovery & Phase 1 Migration
-## برمجة وتطوير معتز العلقمي – تعز – اليمن – 2026م
-
-const SAVE_PATH_PRIMARY: String = "user://masalik_save_v2.json"
-const SAVE_PATH_BACKUP: String = "user://masalik_save_v2.bak.json"
-const LEGACY_SAVE_PATH_V1: String = "user://masalik_save_v1.json"
-const SCHEMA_VERSION: int = 2
-
-var save_data: Dictionary = {
-	"schema_version": SCHEMA_VERSION,
-	"selected_vehicle_id": "shahiq_4x4",
-	"Driving_realism": "sport",
-	"transmission_type": "auto",
-	"quality_preset": "Medium",
-	"control_scheme": "buttons",
-	"steering_sensitivity": 1.0,
-	"master_volume": 0.8,
-	"unlocked_regions": [
-		"taiz_highlands", "naqil_alsahab", "wadi_alrayhan",
-		"tihama_plains", "coastal_highway", "masalik_desert"
-	],
-	"best_records": {},
-	"vehicle_customizations": {},
-	"last_world_state": {
-		"s_meters": 60.0,
-		"lateral_offset": 0.0,
-		"fuel_liters": 85.0,
-		"damage_state": {"engine": 100.0, "suspension": 100.0, "tires": 100.0, "body": 100.0, "cooling": 100.0}
-	}
-}
-
-
+const PRIMARY := "user://masalik_save_v2.json"
+const BACKUP := "user://masalik_save_v2.bak.json"
+var save_data: Dictionary = defaults()
+var recovered := false
+func defaults() -> Dictionary:
+	return {"schema_version": 3, "selected_vehicle_id": "shahiq", "coins": 0, "xp": 0, "completed": {}, "unlocked": ["shahiq"], "vehicle_customizations": {}, "quality": 1, "control_scheme": 0, "layouts": {}, "active_layout": "default", "steering_sensitivity": 1.0, "steering_return": 2.5, "wheel_angle": 180.0, "volumes": {}, "distance": 40.0, "fuel": 85.0, "health": 100.0}
 func _ready() -> void:
 	load_data()
-
-
-func save_data_atomic() -> bool:
-	save_data["schema_version"] = SCHEMA_VERSION
-	save_data["updated_at_unix"] = Time.get_unix_time_from_system()
-	var json_str: String = JSON.stringify(save_data, "\t")
-
-	# Write backup first if primary exists
-	if FileAccess.file_exists(SAVE_PATH_PRIMARY):
-		var existing_file := FileAccess.open(SAVE_PATH_PRIMARY, FileAccess.READ)
-		if existing_file:
-			var existing_content := existing_file.get_as_text()
-			existing_file.close()
-			var bak_file := FileAccess.open(SAVE_PATH_BACKUP, FileAccess.WRITE)
-			if bak_file:
-				bak_file.store_string(existing_content)
-				bak_file.close()
-
-	# Write primary save
-	var file := FileAccess.open(SAVE_PATH_PRIMARY, FileAccess.WRITE)
-	if file == null:
-		push_error("[MASALIK Persistence] Failed to write primary save.")
-		return false
-	file.store_string(json_str)
-	file.close()
-	return true
-
-
+func read_valid(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path): return {}
+	var parser := JSON.new()
+	if parser.parse(FileAccess.get_file_as_string(path)) != OK: return {}
+	var v: Variant = parser.data
+	if not v is Dictionary: return {}
+	if int(v.get("schema_version", 0)) < 1 or int(v.get("schema_version", 0)) > 3: return {}
+	# Reject malformed nested structures before applying external/imported data.
+	for key in ["completed", "vehicle_customizations", "layouts", "volumes"]:
+		if v.has(key) and not v[key] is Dictionary: return {}
+	for key in ["coins", "xp", "distance", "fuel", "health", "quality", "control_scheme"]:
+		if v.has(key) and typeof(v[key]) not in [TYPE_INT, TYPE_FLOAT]: return {}
+	if v.has("unlocked") and not v.unlocked is Array: return {}
+	return v
+func migrate(data: Dictionary) -> Dictionary:
+	var out := defaults()
+	out.merge(data, true)
+	out.schema_version = 3
+	if out.selected_vehicle_id == "shahiq_4x4": out.selected_vehicle_id = "shahiq"
+	if data.has("last_world_state"):
+		out.distance = data.last_world_state.get("s_meters", 40.0)
+	out.coins = maxi(0, int(out.coins))
+	out.distance = clampf(float(out.distance), 0.0, 15000.0)
+	out.quality = clampi(int(out.quality), 0, 2)
+	return out
 func load_data() -> void:
-	if _try_load_from_path(SAVE_PATH_PRIMARY):
-		return
-	push_warning("[MASALIK Persistence] Primary save missing or corrupted; attempting backup recovery...")
-	if _try_load_from_path(SAVE_PATH_BACKUP):
-		save_data_atomic()
-		return
-	# Attempt Phase 1 migration
-	if FileAccess.file_exists(LEGACY_SAVE_PATH_V1):
-		_migrate_from_v1()
-
-
-func _try_load_from_path(path: String) -> bool:
-	if not FileAccess.file_exists(path):
-		return false
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		return false
-	var content: String = file.get_as_text()
-	file.close()
-	var parsed: Variant = JSON.parse_string(content)
-	if typeof(parsed) == TYPE_DICTIONARY and parsed.get("schema_version", 0) == SCHEMA_VERSION:
-		for key in parsed.keys():
-			save_data[key] = parsed[key]
-		return true
-	return false
-
-
-func _migrate_from_v1() -> void:
-	var file := FileAccess.open(LEGACY_SAVE_PATH_V1, FileAccess.READ)
-	if file == null:
-		return
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	file.close()
-	if typeof(parsed) == TYPE_DICTIONARY:
-		if parsed.get("completed", false):
-			save_data["best_records"]["m1_naqil_ascent"] = {
-				"completed": true,
-				"best_time_sec": float(parsed.get("best_time_sec", 0.0)),
-				"best_score": int(parsed.get("best_score", 85)),
-				"vehicle_id": "shahiq_4x4"
-			}
-		save_data_atomic()
+	var d := read_valid(PRIMARY)
+	if d.is_empty():
+		d = read_valid(BACKUP)
+		recovered = not d.is_empty()
+	if d.is_empty(): d = read_valid("user://masalik_save_v1.json")
+	if not d.is_empty(): save_data = migrate(d)
+func save_data_atomic() -> bool:
+	save_data.schema_version = 3
+	var f := FileAccess.open(PRIMARY + ".tmp", FileAccess.WRITE)
+	if f == null: return false
+	f.store_string(JSON.stringify(save_data))
+	f.flush()
+	f.close()
+	if read_valid(PRIMARY + ".tmp").is_empty(): return false
+	# Never replace a known-good backup with a corrupt primary.
+	if not read_valid(PRIMARY).is_empty():
+		if DirAccess.copy_absolute(PRIMARY, BACKUP) != OK: return false
+	return DirAccess.rename_absolute(PRIMARY + ".tmp", PRIMARY) == OK
+func export_save(path: String) -> bool:
+	if not save_data_atomic(): return false
+	return DirAccess.copy_absolute(PRIMARY, path) == OK
+func import_save(path: String) -> bool:
+	var d := read_valid(path)
+	if d.is_empty(): return false
+	save_data = migrate(d)
+	return save_data_atomic()

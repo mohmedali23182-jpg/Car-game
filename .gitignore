@@ -11,3 +11,5 @@ coverage/
 *.keystore
 *.jks
 Masalik-3D/export_credentials.cfg
+Masalik-3D/assets/audio/*.wav
+Masalik-3D/android/build/
