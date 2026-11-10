@@ -22,3 +22,17 @@ The package remains com.moataz.masalik; CI increments versionCode and restores t
 ## Limits
 
 The art remains original procedural game art rather than photogrammetry. Exact real-world vehicle interiors, windshield reflections, richer roadside objects, fully independent brake-assist/slip validation and identified-device performance/thermal acceptance remain ongoing work. A new screenshot from Android is evidence of the user's successful previous launch, not evidence that every new feature has been tested on that phone. No measured phone FPS or photorealism is claimed.
+
+## Completed environment/audio pass — 2026-11-11
+
+The refresh also replaces the uniform V-shaped green valley with an uphill cut, open downhill views, distinct lowland/coastal/dune terrain and stone terraces/crop rows. Volumetric canopies and original palm-frond geometry replace the initial disk-like trees. Buildings/signs stand upright independently of the road's gradient.
+
+Six actual collidable service courts contain pump canopies, parking markings and a cafe frontage. Guardrails leave entrances at those locations. Blue map markers point to the same world-space service locations; entering a court and stopping enables a validated 25-coin refill/repair transaction, with balance and speed guards.
+
+Vehicle bodies now have full lower door sections, painted wheel arches and lower roof proportions while wheel contact positions/radii remain unchanged. The cockpit camera follows the same body profile transform and an additional cabin collision volume protects the new roof shape.
+
+Original generated audio now includes separate idle/load engine layers, shifts, suspension, gravel, rain/thunder, wind and a 48-second plucked travel theme. These are local synthesized assets, not recordings of real vehicle/instrument brands. Wet asphalt darkens and changes roughness over time; dry dirt/sand driving emits restrained local dust.
+
+Latest local assertions: 206 passes, plus native UI tests covering station transactions, startup parking and camera restoration. A fresh continuous-route regression and actual rendered screenshots are required by CI before publishing this test build.
+
+The native photo album now previews actual locally saved captures and provides local export through a system file picker; CI also renders this positive album flow using a real runtime capture.

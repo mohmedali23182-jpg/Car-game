@@ -45,7 +45,13 @@ func _ready() -> void:
 	angular_damp = 0.5
 	var shape := CollisionShape3D.new(); var box := BoxShape3D.new()
 	box.size = Vector3(float(spec.trackWidthM)*0.88,0.65,float(spec.wheelbaseM)+1.2)
-	shape.shape=box; shape.position.y=0.35; add_child(shape)
+	shape.shape=box;shape.position.y=0.35;add_child(shape)
+	var cabin := CollisionShape3D.new();var cabin_box := BoxShape3D.new()
+	var full_length := float(spec.wheelbaseM)+1.45
+	var bus: bool=spec.id=="hafilat";var sedan: bool=spec.id in ["madina","barq"]
+	var pickup: bool=spec.id in ["saqr","badiya","munqidh","jabal"]
+	cabin_box.size=Vector3(float(spec.trackWidthM)*0.82,0.95 if bus else (0.40 if sedan else 0.58),full_length*(0.30 if pickup else 0.58))
+	cabin.shape=cabin_box;cabin.position=Vector3(0,0.86 if bus else (0.45 if sedan else 0.64),-full_length*0.16 if pickup else full_length*0.03);add_child(cabin)
 	visual=VehicleVisual.new(); add_child(visual); visual.build(spec,custom)
 	for i in range(4):
 		var ray := RayCast3D.new()

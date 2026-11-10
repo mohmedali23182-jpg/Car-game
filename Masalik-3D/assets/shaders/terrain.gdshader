@@ -8,7 +8,7 @@ void vertex() {world_n=normalize(MODEL_NORMAL_MATRIX*NORMAL);world_pos=(MODEL_MA
 void fragment() {
  float fine=noise(world_pos.xz*2.0)*0.5+noise(world_pos.xz*0.07)*0.5;
  float strata=sin(world_pos.y*2.1+sin(world_pos.x*0.1))*0.045;
- float rock=smoothstep(0.86,0.52,abs(world_n.y));
+ float rock=(1.0-smoothstep(0.52,0.86,abs(world_n.y)));
  float dry=noise(world_pos.xz*0.012)*0.35;
  vec3 earth=mix(base_color.rgb,vec3(0.36,0.31,0.24),max(rock,dry));
  ALBEDO=earth*(0.86+0.18*fine+strata);

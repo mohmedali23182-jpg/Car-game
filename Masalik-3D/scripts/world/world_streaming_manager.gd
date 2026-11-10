@@ -15,6 +15,7 @@ var tick := 0.0
 var last_index := 10
 var radius := 2
 var materials: Dictionary = {}
+var service_distances := [180.0,3500.0,6100.0,8500.0,11000.0,13700.0]
 func _ready() -> void:
 	regions = JSON.parse_string(FileAccess.get_file_as_string("res://data/maps/regions.json"))
 	noise.seed = 326
@@ -34,6 +35,7 @@ func _ready() -> void:
 	var stone_mat := ShaderMaterial.new();stone_mat.shader=load("res://assets/shaders/masonry.gdshader");materials.stone=stone_mat
 	var white := StandardMaterial3D.new();white.albedo_color=Color("dcd7c7");white.roughness=0.82;materials.white=white
 	var steel := StandardMaterial3D.new();steel.albedo_color=Color("747d80");steel.metallic=0.7;steel.roughness=0.42;materials.steel=steel
+	var leaves := ShaderMaterial.new();leaves.shader=load("res://assets/shaders/foliage.gdshader");materials.foliage=leaves
 	update_chunks(distance)
 func build_path() -> void:
 	points.clear()
@@ -63,6 +65,10 @@ func point_at(s: float) -> Vector3:
 func basis_at(s: float) -> Basis:
 	var f := (point_at(minf(s+2, LENGTH)) - point_at(maxf(s-2, 0))).normalized()
 	return Basis.looking_at(f, Vector3.UP)
+func upright_basis(s: float) -> Basis:
+	var forward := point_at(minf(s+2,LENGTH))-point_at(maxf(s-2,0))
+	forward.y=0
+	return Basis.looking_at(forward.normalized(),Vector3.UP)
 func region_at(s: float) -> int:
 	for i in range(regions.size()):
 		if s < float(regions[i].endM): return i
@@ -107,15 +113,29 @@ func mesh_body(parent: Node3D, st: SurfaceTool, material: Material, surface: Str
 	mi.create_trimesh_collision()
 	mi.get_child(0).set_meta("surface_type", surface)
 	return mi
-func height_point(index: int, lateral: float) -> Vector3:
-	var p := points[index] + rights[index] * lateral
-	var edge := maxf(0.0, absf(lateral)-8.0)
-	var mountain := 0.9 + noise.get_noise_2d(p.x, p.z)
+func height_point(index: int,lateral: float) -> Vector3:
+	var p := points[index]+rights[index]*lateral
+	var edge := maxf(0.0,absf(lateral)-8.0)
+	var n := noise.get_noise_2d(p.x,p.z)
 	var r := region_at(index*STEP)
-	var amp: float = [0.7, 1.1, 0.4, 0.06, 0.1, 0.12][r]
-	p.y += edge * mountain * float(amp) - 0.15
-	if r == 0 and edge > 12: p.y = floorf(p.y / 5.0) * 5.0
+	var elevation := 0.0
+	match r:
+		0,1:
+			# An uphill cut on one side, an open valley on the other, with irregular ridges.
+			if lateral<0: elevation=edge*(0.31+0.18*n)+maxf(0,edge-90)*0.15
+			else: elevation=-minf(95,edge*0.22)+n*minf(edge,220)*0.18
+		2: elevation=-edge*0.015+n*minf(edge*0.12,24)
+		3: elevation=n*minf(edge*0.04,12)
+		4: elevation=-minf(edge*0.15,14) if lateral<0 else edge*0.055+n*minf(edge*0.08,20)
+		5: elevation=sin(p.x*0.035+p.z*0.017)*sin(p.z*0.023)*minf(edge*0.15,14)+n*minf(edge*0.06,9)
+	p.y+=elevation-0.16
+	if r==0 and lateral< -20 and edge<180: p.y=floorf(p.y/3.0)*3.0
 	return p
+func service_position(s: float) -> Vector3: return point_at(s)+basis_at(s).x*23.0
+func nearest_service(pos: Vector3) -> float:
+	var best := INF
+	for s in service_distances: best=minf(best,pos.distance_to(service_position(s)))
+	return best
 func build_chunk(id: int) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Sector_%02d" % id
@@ -156,9 +176,12 @@ func build_chunk(id: int) -> Node3D:
 		var midpoint := (points[i]+points[i+1])*0.5
 		for side in [-1.0,1.0]:
 			edge_marks.append(Transform3D(frame,midpoint+rights[i]*side*4.9+Vector3.UP*0.025))
-			if region in [0,1] and i%3==0:
+			var entrance := false
+			for stop in service_distances:
+				if side>0 and absf((i+0.5)*STEP-stop)<28: entrance=true
+			if region in [0,1] and i%3==0 and not entrance:
 				posts.append(Transform3D(frame,midpoint+rights[i]*side*6.15+Vector3.UP*0.45))
-			if region in [0,1]: rails.append(Transform3D(frame,midpoint+rights[i]*side*6.15+Vector3.UP*0.85))
+			if region in [0,1] and not entrance: rails.append(Transform3D(frame,midpoint+rights[i]*side*6.15+Vector3.UP*0.85))
 		if i%4==0: marks.append(Transform3D(frame,midpoint+Vector3.UP*0.03))
 	var box := BoxMesh.new();box.size=Vector3(0.14,0.025,3.4);instances(root,box,materials.gold,marks,500)
 	box=BoxMesh.new();box.size=Vector3(0.13,0.025,4.15);instances(root,box,materials.white,edge_marks,500)
@@ -171,7 +194,8 @@ func build_chunk(id: int) -> Node3D:
 	# Local stone village frontage and white plaster surrounds, aligned toward the road.
 	for i in range(first+15,end,35):
 		var side := -1.0 if i%2==0 else 1.0
-		var village := Node3D.new();root.add_child(village);village.position=height_point(i,side*21);village.basis=basis_at(i*STEP).rotated(Vector3.UP,-side*PI/2)
+		var village := Node3D.new();root.add_child(village);village.position=height_point(i,side*21);village.basis=upright_basis(i*STEP).rotated(Vector3.UP,-side*PI/2)
+		box_node(village,Vector3(6.2,1.6,5.2),Vector3(0,-0.8,0),materials.stone,true)
 		for floor_id in range(2+i%3):
 			var y := floor_id*2.9
 			box_node(village,Vector3(6,2.8,5),Vector3(0,1.4+y,0),materials.stone,true)
@@ -186,7 +210,7 @@ func build_chunk(id: int) -> Node3D:
 			box_node(village,Vector3(5.6,0.16,1.5),Vector3(0,2.3,3.1),materials.green,false)
 			text_sign(village,["بنّ يمني","ورشة المسالك","بقالة الوادي","استراحة القمم"][i%4],Vector3(0,2.65,2.75),Vector2(4.8,0.6),false)
 	# Arabic directional signs, real-world-style markings and speed boards.
-	var sign_frame := Node3D.new();root.add_child(sign_frame);sign_frame.position=point_at(id*CHUNK+110);sign_frame.basis=basis_at(id*CHUNK+110)
+	var sign_frame := Node3D.new();root.add_child(sign_frame);sign_frame.position=point_at(id*CHUNK+110);sign_frame.basis=upright_basis(id*CHUNK+110)
 	text_sign(sign_frame,str(regions[region].nameAr).split(" (")[0]+"  ↑",Vector3(8.5,3.6,0),Vector2(4.4,1.25),true)
 	box_node(sign_frame,Vector3(0.10,3.2,0.10),Vector3(8.5,1.6,0),materials.steel,true)
 	if region == 4:
@@ -195,26 +219,37 @@ func build_chunk(id: int) -> Node3D:
 		var water := ShaderMaterial.new();water.shader=load("res://assets/shaders/sea.gdshader");sea.material_override=water;root.add_child(sea)
 	# Vegetation and natural rocks, deterministic at every sector boundary.
 	var trunks: Array[Transform3D]=[];var crowns: Array[Transform3D]=[]
+	var brown := StandardMaterial3D.new();brown.albedo_color=Color("4f4231");brown.roughness=1.0
 	for i in range(first+6,end,7):
 		var lateral := (18.0+float(i%4)*12.0)*(-1.0 if i%2==0 else 1.0)
 		var center := height_point(i,lateral)
 		if region not in [1,5]:
 			trunks.append(Transform3D(Basis.IDENTITY,center+Vector3.UP*2.0))
-			crowns.append(Transform3D(Basis.IDENTITY.scaled(Vector3(1.0+(i%3)*0.2,1,1)),center+Vector3.UP*4.2))
+			for cluster in range(3 if region not in [3,4] else 1):
+				var offset := Vector3(sin(cluster*TAU/3)*1.0,4.0+float(cluster%2)*0.7,cos(cluster*TAU/3)*0.9) if region not in [3,4] else Vector3(0,4.1,0)
+				crowns.append(Transform3D(Basis(Vector3.UP,float(i)*0.7),center+offset))
 		elif i%3==0:
 			var rock := MeshInstance3D.new();var stone := SphereMesh.new();stone.radius=1.2+float(i%3);stone.height=stone.radius*1.4;stone.radial_segments=8;stone.rings=4
 			rock.mesh=stone;rock.position=center;rock.material_override=materials.terrain;root.add_child(rock);rock.create_trimesh_collision();rock.visibility_range_end=400
 	if not trunks.is_empty():
 		var trunk := CylinderMesh.new();trunk.top_radius=0.16;trunk.bottom_radius=0.25;trunk.height=4;trunk.radial_segments=6
-		instances(root,trunk,materials.stone,trunks,350)
-		var crown := SphereMesh.new();crown.radius=2.2;crown.height=2.3;crown.radial_segments=8;crown.rings=4
-		instances(root,crown,materials.green,crowns,350)
+		instances(root,trunk,brown,trunks,350)
+		var crown := SphereMesh.new();crown.radius=1.8;crown.height=2.8;crown.radial_segments=12;crown.rings=8
+		instances(root,palm_mesh() if region in [3,4] else crown,materials.foliage,crowns,420)
 	# Drive-through tunnel portal with collidable roof and sides; clear width 11m.
 	if id==6:
 		for i in range(first+30,first+50,4):
 			var frame := Node3D.new();root.add_child(frame);frame.position=points[i];frame.basis=basis_at(i*STEP)
 			for side in [-1.0,1.0]: box_node(frame,Vector3(1.2,7,16),Vector3(side*6.2,3.5,0),materials.stone,true)
 			box_node(frame,Vector3(13.5,1.2,16),Vector3(0,7.2,0),materials.stone,true)
+	if region==0:
+		for i in range(first+10,end-10,20):
+			for lateral in [-30.0,-50.0,-70.0]:
+				var plot := Node3D.new();root.add_child(plot);plot.position=height_point(i,lateral);plot.basis=basis_at(i*STEP)
+				box_node(plot,Vector3(15,0.5,0.5),Vector3(0,0.1,8),materials.stone,true)
+				for row in range(6): box_node(plot,Vector3(13,0.09,0.75),Vector3(0,0.16,-6+row*2),materials.green,false)
+	for s in service_distances:
+		if int(s/CHUNK)==id: service_plaza(root,s)
 	pack_architecture(root)
 	return root
 func pack_architecture(root: Node3D) -> void:
@@ -253,3 +288,34 @@ func text_sign(parent: Node3D,text: String,pos: Vector3,dimensions: Vector2,gree
 	var backing := StandardMaterial3D.new();backing.albedo_color=Color("1d4e48") if green else Color("67492f")
 	box_node(parent,Vector3(dimensions.x,dimensions.y,0.10),pos,backing,false)
 	var label := Label3D.new();label.text=text;label.font=load("res://assets/fonts/NotoSansArabic-Regular.ttf");label.font_size=52;label.pixel_size=0.006;label.position=pos+Vector3(0,0,0.065);label.outline_size=0;label.modulate=Color("eae6d6");label.no_depth_test=false;parent.add_child(label)
+
+func palm_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new();st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for frond in range(12):
+		var angle := frond*TAU/12;var axis := Vector3(sin(angle),0,cos(angle));var side := axis.cross(Vector3.UP)
+		for segment in range(5):
+			var t0 := float(segment)/5;var t1 := float(segment+1)/5
+			var a := axis*t0*3.3+Vector3.UP*(sin(t0*PI)*0.7-t0*0.4)
+			var b := axis*t1*3.3+Vector3.UP*(sin(t1*PI)*0.7-t1*0.4)
+			var wa := sin(t0*PI)*0.38+0.03;var wb := sin(t1*PI)*0.38+0.01
+			triangle(st,a-side*wa,a+side*wa,b-side*wb);triangle(st,a+side*wa,b+side*wb,b-side*wb)
+	st.generate_normals();return st.commit()
+func service_plaza(parent: Node3D,s: float) -> void:
+	var area := Node3D.new();area.name="ServicePlaza";parent.add_child(area);area.position=point_at(s);area.basis=upright_basis(s)
+	# Parking court stays beyond the road's 11m driving corridor.
+	box_node(area,Vector3(29,4,45),Vector3(22,-2.15,0),materials.stone,true)
+	box_node(area,Vector3(29,0.35,45),Vector3(22,-0.20,0),materials.asphalt,true)
+	box_node(area,Vector3(29,1.6,0.5),Vector3(22,-0.5,-22.5),materials.stone,true)
+	box_node(area,Vector3(12,0.25,9),Vector3(23,4.3,-6),materials.white,true)
+	for x in [18.0,28.0]:
+		for z in [-9.0,-3.0]: box_node(area,Vector3(0.25,4.2,0.25),Vector3(x,2.1,z),materials.steel,true)
+	for x in [20.0,26.0]:
+		box_node(area,Vector3(0.8,1.6,0.6),Vector3(x,0.8,-6),materials.white,true)
+		box_node(area,Vector3(0.67,0.4,0.05),Vector3(x,1.1,-5.67),materials.window,false)
+	text_sign(area,"محطة المسالك · وقود وخدمة",Vector3(23,4.1,-1.4),Vector2(10,0.7),true)
+	box_node(area,Vector3(11,3.1,7),Vector3(25,1.55,14),materials.stone,true)
+	box_node(area,Vector3(7,2.6,0.10),Vector3(25,1.3,17.55),materials.window,false)
+	text_sign(area,"استراحة البن اليمني",Vector3(25,3.3,17.6),Vector2(10,0.7),false)
+	for space in range(4):
+		box_node(area,Vector3(0.10,0.02,5),Vector3(10.5+space*2.8,0.025,7),materials.white,false)
+	text_sign(area,"مواقف  P",Vector3(12,2.6,11),Vector2(3.0,0.65),true)

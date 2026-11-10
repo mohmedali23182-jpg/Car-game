@@ -17,6 +17,11 @@ func _draw() -> void:
 		var v := Vector2(p.x,p.z)*scale+size*0.5
 		if Rect2(Vector2.ZERO,size).grow(40).has_point(v): points.append(v)
 	if points.size()>1: draw_polyline(points,MasalikUI.GOLD,3,true)
+	for stop in world.service_distances:
+		var p := world.service_position(stop)-center
+		var marker := Vector2(p.x,p.z)*scale+size*0.5
+		if Rect2(Vector2.ZERO,size).has_point(marker):
+			draw_circle(marker,4,Color("79b3bd"));draw_arc(marker,6,0,TAU,20,Color("79b3bd"),1)
 	var c := size*0.5
 	var heading := -Vector2(car.global_basis.z.x,car.global_basis.z.z).normalized()
 	draw_colored_polygon(PackedVector2Array([c+heading*9,c+heading.rotated(2.5)*7,c+heading.rotated(-2.5)*7]),Color.WHITE)

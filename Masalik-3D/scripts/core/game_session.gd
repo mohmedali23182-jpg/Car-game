@@ -17,6 +17,8 @@ var save_clock := 0.0
 var tow: RigidBody3D
 var tow_attached := false
 var capture_clock := 0.0
+var dust: CPUParticles3D
+var road_wetness := 0.0
 var instruments: DrivingInstruments
 var starting_parked := true
 var photo_previous_view := 0
@@ -43,13 +45,22 @@ func _ready() -> void:
 		weather.hour={"sunrise":6.0,"morning":8.0,"noon":12.0,"afternoon":15.0,"sunset":18.0,"night":22.0}.get(mission.timeOfDayPreset,8.0)
 	camera=MasalikCameraController.new();camera.target_vehicle=car;camera.position=car.position+car.basis.z*7+Vector3.UP*3;add_child(camera);camera.current=true
 	traffic=MasalikTraffic.new();traffic.world=world;traffic.player=car;add_child(traffic)
-	audio=MasalikAudio.new();audio.car=car;add_child(audio)
+	audio=MasalikAudio.new();audio.car=car;audio.weather=weather;add_child(audio)
 	if not mission.is_empty() and mission.category=="rescue": create_tow(distance+signf(float(mission.finishDistanceM)-distance)*80)
+	create_dust()
 	build_hud()
 	missions.finished.connect(results)
 	if not mission.is_empty():
 		missions.start(mission);marker(float(mission.finishDistanceM))
 	QualityManager.changed.connect(apply_quality);apply_quality(QualityManager.current)
+func create_dust() -> void:
+	dust=CPUParticles3D.new();dust.amount=45;dust.lifetime=0.9;dust.emitting=false;dust.local_coords=false
+	dust.position=Vector3(0,-0.65,float(car.spec.wheelbaseM)*0.5);dust.emission_shape=CPUParticles3D.EMISSION_SHAPE_BOX;dust.emission_box_extents=Vector3(float(car.spec.trackWidthM)*0.5,0.05,0.25)
+	dust.direction=Vector3(0,0.3,1);dust.initial_velocity_min=1.5;dust.initial_velocity_max=3;dust.gravity=Vector3(0,0.4,0);dust.scale_amount_min=0.07;dust.scale_amount_max=0.20
+	var mesh := SphereMesh.new();mesh.radial_segments=6;mesh.rings=4
+	var material := StandardMaterial3D.new();material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA;material.vertex_color_use_as_albedo=true;material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED;mesh.material=material;dust.mesh=mesh
+	var gradient := Gradient.new();gradient.colors=PackedColorArray([Color(0.6,0.5,0.36,0.2),Color(0.6,0.5,0.36,0)]);dust.color_ramp=gradient;dust.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	car.add_child(dust)
 func apply_quality(preset: int) -> void:
 	world.radius=[1,2,3][preset];traffic.active_count=[2,5,8][preset]
 	weather.sun.shadow_enabled=preset>0
@@ -93,6 +104,9 @@ func _physics_process(delta: float) -> void:
 	if absf(controls.throttle)>0.04: starting_parked=false
 	car.set_drive_inputs(controls.throttle,1.0 if starting_parked else controls.brake,controls.steer,controls.handbrake)
 	car.wet_grip=weather.get_weather_friction_multiplier(car.current_surface)
+	road_wetness=move_toward(road_wetness,1.0 if "rain" in weather.current_weather_preset else 0.0,delta*0.06)
+	world.materials.asphalt.set_shader_parameter("wetness",road_wetness)
+	dust.emitting=car.grounded>=2 and car.current_surface in ["dirt","sand"] and car.current_speed_kmh>6 and car.wet_grip>0.85
 	var lateral := car.position.distance_to(world.point_at(world.distance))
 	if missions.running:
 		if missions.active.category!="rescue" or tow_attached and tow.position.distance_to(world.point_at(float(missions.active.finishDistanceM)))<40:
@@ -155,8 +169,19 @@ func utility_menu() -> void:
 		resume())
 	MasalikUI.button(v,"استعادة المركبة على الطريق",func(): recover();resume())
 	MasalikUI.button(v,"التصوير",func(): resume();photo_mode())
+	MasalikUI.button(v,"ألبوم صور الرحلة",func(): resume();open_album())
+	MasalikUI.button(v,"خدمة المحطة · 25 عملة",func(): MasalikUI.label(v,service_station()))
 	MasalikUI.button(v,"ناقل الحركة: "+("أوتوماتيكي" if car.automatic else "يدوي"),func(): car.automatic=not car.automatic;resume())
 	MasalikUI.button(v,"متابعة",resume)
+func open_album() -> void:
+	var v := show_panel("ألبوم الرحلة")
+	PhotoAlbum.populate(v,resume)
+func service_station() -> String:
+	if world.nearest_service(car.global_position)>16: return "ادخل ساحة محطة الخدمة أولًا؛ رمزها الأزرق على الخريطة."
+	if car.current_speed_kmh>2: return "توقف تمامًا أمام المضخات قبل الخدمة."
+	if int(PersistenceManager.save_data.coins)<25: return "تحتاج إلى 25 عملة للخدمة."
+	PersistenceManager.save_data.coins-=25;car.repair();save_session()
+	return "اكتملت التعبئة والصيانة. رحلة آمنة!"
 func pause_menu() -> void:
 	if is_instance_valid(overlay): return
 	var v := show_panel("استراحة على الطريق")
@@ -213,7 +238,7 @@ func photo_mode() -> void:
 	MasalikUI.button(v,"التقاط صورة محلية",func():
 		overlay.hide();await RenderingServer.frame_post_draw
 		var path := "user://MASALIK-%d.png" % int(Time.get_unix_time_from_system())
-		var err := get_viewport().get_texture().get_image().save_png(path);overlay.show();MasalikUI.label(v,"حُفظت الصورة: "+ProjectSettings.globalize_path(path) if err==OK else "تعذر حفظ الصورة"))
+		var err := get_viewport().get_texture().get_image().save_png(path);overlay.show();MasalikUI.label(v,"حُفظت الصورة في ألبوم الرحلة." if err==OK else "تعذر حفظ الصورة"))
 	MasalikUI.button(v,"متابعة",resume)
 func results(success: bool, message: String) -> void:
 	if is_instance_valid(overlay): return

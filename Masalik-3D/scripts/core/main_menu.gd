@@ -29,17 +29,20 @@ func home() -> void:
 	MasalikUI.button(actions,"الكراج · اختر رفيق الطريق",garage)
 	MasalikUI.button(actions,"إعدادات القيادة والتحكم",settings)
 	MasalikUI.button(actions,"سجل الرحلات والاعتمادات",credits)
+	MasalikUI.button(actions,"ألبوم صور الرحلة",album)
 	var preview_holder := SubViewportContainer.new();preview_holder.custom_minimum_size=Vector2(540,360);preview_holder.size_flags_horizontal=Control.SIZE_EXPAND_FILL;preview_holder.stretch=true;row.add_child(preview_holder)
 	preview=SubViewport.new();preview.size=Vector2i(750,440);preview.own_world_3d=true;preview_holder.add_child(preview)
 	var world_root := Node3D.new();preview.add_child(world_root);studio_environment(world_root)
 	display_car=VehicleVisual.new();world_root.add_child(display_car);display_car.build(VehicleFleetRegistry.get_spec(selected),PersistenceManager.save_data.vehicle_customizations.get(selected,{}))
-	var cam := Camera3D.new();cam.fov=32;cam.position=Vector3(3.5,1.9,4.8);world_root.add_child(cam);cam.look_at(Vector3(0,0.5,0));cam.current=true
+	var cam := Camera3D.new();cam.fov=32;cam.position=Vector3(3.5,1.9,4.8);world_root.add_child(cam);cam.look_at(Vector3(0,0.10,0));cam.current=true
 	var light := DirectionalLight3D.new();light.rotation_degrees=Vector3(-35,-30,0);light.light_energy=1.5;world_root.add_child(light)
 	var fill := OmniLight3D.new();fill.position=Vector3(-3,3,-3);fill.omni_range=15;fill.light_color=Color("a9c4cf");fill.light_energy=2;world_root.add_child(fill)
 	var floor_mesh := MeshInstance3D.new();var plane := PlaneMesh.new();plane.size=Vector2(25,25);floor_mesh.mesh=plane;floor_mesh.position.y=-0.96
 	var mat := StandardMaterial3D.new();mat.albedo_color=Color("17232a");mat.roughness=0.7;floor_mesh.material_override=mat;world_root.add_child(floor_mesh)
 	var d: Dictionary=PersistenceManager.save_data
 	MasalikUI.label(content,"%s  ·  المستوى %d  ·  %d عملة  ·  جميع الرحلات محلية" % [str(VehicleFleetRegistry.get_spec(selected).nameAr),1+int(d.xp)/1000,int(d.coins)],18)
+func album() -> void:
+	clear("ألبوم الرحلة");PhotoAlbum.populate(content,home)
 func launch(mission: Dictionary) -> void:
 	PersistenceManager.save_data.selected_vehicle_id=selected
 	PersistenceManager.save_data_atomic()
@@ -96,7 +99,7 @@ func garage() -> void:
 	display_car=VehicleVisual.new();root.add_child(display_car)
 	var custom: Dictionary=PersistenceManager.save_data.vehicle_customizations.get(selected,{})
 	display_car.build(spec,custom)
-	var cam := Camera3D.new();cam.fov=32;cam.position=Vector3(3.5,1.9,4.8);root.add_child(cam);cam.look_at(Vector3(0,0.5,0));cam.current=true
+	var cam := Camera3D.new();cam.fov=32;cam.position=Vector3(3.5,1.9,4.8);root.add_child(cam);cam.look_at(Vector3(0,0.10,0));cam.current=true
 	var light := DirectionalLight3D.new();light.rotation_degrees=Vector3(-45,-30,0);light.light_energy=2;root.add_child(light)
 	var fill := OmniLight3D.new();fill.position=Vector3(-3,3,-2);fill.omni_range=20;root.add_child(fill)
 	var paint_row := HBoxContainer.new();content.add_child(paint_row)

@@ -26,7 +26,7 @@ func _process(delta: float) -> void:
 		var truck: bool=spec.id=="jabal"
 		var roof := 1.03 if spec.id=="madina" else (0.87 if spec.id=="barq" else (1.95 if bus else 1.46))
 		var cabin_front := -length*0.5+length*(0.06 if bus or truck else 0.28)
-		offset=Vector3(-float(spec.trackWidthM)*0.22,minf(1.4,roof-0.24),cabin_front+(1.03 if bus or spec.id=="aseel" else 1.27))
+		offset=Vector3(-float(spec.trackWidthM)*0.22,minf(1.4,roof-0.24)*VehicleVisual.BODY_HEIGHT_SCALE+VehicleVisual.BODY_HEIGHT_OFFSET,cabin_front+(1.03 if bus or spec.id=="aseel" else 1.27))
 	if current_view==5 or photo:
 		offset=Vector3(sin(orbit.x)*cos(orbit.y),sin(clampf(orbit.y,-0.1,1.4)),cos(orbit.x)*cos(orbit.y))*orbit_distance
 	var forward := -target_vehicle.global_basis.z

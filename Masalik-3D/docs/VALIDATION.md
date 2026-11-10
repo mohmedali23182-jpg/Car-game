@@ -38,3 +38,9 @@ The first CI APK (593a989) rendered the car falling below the map: road/terrain 
 ## Continuous real-physics driving test
 
 `tests/road_drive.tscn`: an automated steering/throttle controller drove from s=40 m to s=14900 m through every region using only the actual raycast rigidbody inputs, without teleporting or restoring the vehicle. Passed in 904.43 seconds of simulated physics time, chassis health 100%, no fall-through; intermediate checkpoints at each kilometer recorded. Fixed-fps headless acceleration means this is not a measured 15-minute real-time GPU or phone test.
+
+## Experience refresh — 2026-11-11
+
+See DRIVING_EXPERIENCE_REFRESH.md for the new 206-assertion suite, completed six-station proximity/transaction flow, body/cabin changes, open-valley/terrace/tree pass, native dashboard/pedals and layered local sound. The older matrix above describes earlier checkpoints; physical Android acceptance remains pending for the newest code, despite the user's successful launch of the original test APK.
+
+The native photo album now previews actual locally saved captures and provides local export through a system file picker; CI also renders this positive album flow using a real runtime capture.

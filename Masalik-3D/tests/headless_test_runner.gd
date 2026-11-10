@@ -49,6 +49,9 @@ func run() -> void:
 			if not hit.is_empty(): print("EDGE ",s," side=",side," surface=",hit.collider.get_meta("surface_type","")," delta_y=",hit.position.y-test_point.y)
 			check(not hit.is_empty() and hit.collider.get_meta("surface_type","")==world.surface_at(s),"road edges remain uncovered at "+str(s)+" side "+str(side))
 		road_car.queue_free();await get_tree().process_frame
+	check(world.service_distances.size()==6,"six local service plazas")
+	for stop in world.service_distances:
+		check(world.nearest_service(world.service_position(stop))<0.1,"service proximity is computed from actual plaza position")
 	var store := root.get_node("PersistenceManager")
 	var before: Dictionary=store.save_data.duplicate(true)
 	store.save_data.coins=321;check(store.save_data_atomic(),"atomic initial save")
@@ -109,7 +112,7 @@ func run() -> void:
 	controls.reset_input()
 	for id in registry.specs:
 		var visual := VehicleVisual.new();root.add_child(visual);visual.build(registry.get_spec(id));check(visual.wheels.size()==4,"renderable wheel rig "+str(id));check(visual.get_child_count()<35,"batched static vehicle geometry "+str(id));visual.queue_free()
-	for resource in ["engine","horn","music","impact","tires","wind"]: check(load("res://assets/audio/"+resource+".wav")!=null,"bundled audio "+resource)
+	for resource in ["engine","engine_load","horn","music","impact","tires","gravel","rain","thunder","shift","suspension","wind"]: check(load("res://assets/audio/"+resource+".wav")!=null,"bundled audio "+resource)
 	controls.queue_free();car.queue_free();ground.queue_free();missions.queue_free();world.queue_free()
 	await get_tree().process_frame;await get_tree().process_frame
 	print("RESULT checks=",checks," failures=",failures)

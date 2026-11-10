@@ -7,6 +7,8 @@ var headlights: Array[SpotLight3D] = []
 var brake_material := StandardMaterial3D.new()
 var spec: Dictionary
 var driver_wheel: Node3D
+const BODY_HEIGHT_SCALE := 0.75
+const BODY_HEIGHT_OFFSET := -0.125
 var accessories: Dictionary = {}
 func material(color: String, metal := 0.0, rough := 0.7) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new();m.albedo_color=Color(color);m.metallic=metal;m.roughness=rough
@@ -83,6 +85,16 @@ func build(s: Dictionary, custom: Dictionary = {}) -> void:
 		part(Vector3(width*0.91,0.5,0.10),Vector3(0,belt+0.05,rear-0.08),paint)
 		if float(custom.get("cargo",0))>0:
 			for i in range(3): part(Vector3(width*0.65,0.35,bed_length*0.22),Vector3(0,belt+0.25,bed_start+bed_length*(0.2+0.27*i)),material("8c683f"))
+	# Continuous door sills and painted wheel-arch lips give the chassis a full body.
+	for side in [-1.0,1.0]:
+		part(Vector3(0.09,0.82,maxf(0.5,float(s.wheelbaseM)-2*float(s.wheelRadiusM)-0.18)),Vector3(side*(half+0.02),-0.04,0),paint)
+		for axle in [-1.0,1.0]:
+			var wheel_z: float=axle*float(s.wheelbaseM)*0.5
+			var radius: float=float(s.wheelRadiusM)+0.07
+			for segment in range(16):
+				var a := PI*float(segment)/16;var b := PI*float(segment+1)/16
+				var x: float=side*(half+0.08)
+				quad([Vector3(x,-0.5+sin(a)*radius/BODY_HEIGHT_SCALE,wheel_z+cos(a)*radius),Vector3(x,-0.5+sin(b)*radius/BODY_HEIGHT_SCALE,wheel_z+cos(b)*radius),Vector3(x,-0.5+sin(b)*(radius+0.08)/BODY_HEIGHT_SCALE,wheel_z+cos(b)*(radius+0.08)),Vector3(x,-0.5+sin(a)*(radius+0.08)/BODY_HEIGHT_SCALE,wheel_z+cos(a)*(radius+0.08))],trim)
 	# Shaped grille, slim running lights and front/rear reflectors.
 	part(Vector3(width*0.7,0.24,0.05),Vector3(0,belt*0.44,front-0.03),black)
 	for bar in range(5): part(Vector3(width*0.63,0.019,0.06),Vector3(0,belt*0.31+bar*0.043,front-0.06),silver)
@@ -130,10 +142,16 @@ func build(s: Dictionary, custom: Dictionary = {}) -> void:
 		for n in range(6):
 			var spoke := MeshInstance3D.new();var box := BoxMesh.new();box.size=Vector3(tire_width+0.03,radius*0.95,0.065);spoke.mesh=box;spoke.rotation.x=n*PI/3;spoke.material_override=silver;pivot.add_child(spoke)
 		for n in range(18):
-			var tread := MeshInstance3D.new();var box := BoxMesh.new();box.size=Vector3(tire_width*1.04,0.05,0.10);tread.mesh=box;tread.material_override=trim;tread.position=Vector3(0,cos(n*TAU/18)*radius,sin(n*TAU/18)*radius);tread.rotation.x=n*TAU/18;pivot.add_child(tread)
+			var tread := MeshInstance3D.new();var box := BoxMesh.new();box.size=Vector3(tire_width*1.01,0.018 if sedan or bus else 0.035,0.045 if sedan or bus else 0.075);tread.mesh=box;tread.material_override=trim;tread.position=Vector3(0,cos(n*TAU/18)*radius,sin(n*TAU/18)*radius);tread.rotation.x=n*TAU/18;pivot.add_child(tread)
 		batch_static(pivot)
 		wheel.position=Vector3((-1.0 if i%2==0 else 1.0)*float(s.trackWidthM)*0.5,-0.5,(-1.0 if i<2 else 1.0)*float(s.wheelbaseM)*0.5)
 	batch_static(self)
+	var body := Node3D.new();body.name="BodyShell"
+	for child in get_children():
+		if child in wheels: continue
+		remove_child(child);body.add_child(child)
+	add_child(body);body.scale.y=BODY_HEIGHT_SCALE;body.position.y=BODY_HEIGHT_OFFSET
+	driver_wheel.scale.y=1.0/BODY_HEIGHT_SCALE
 func loft(rings: Array, mat: Material) -> void:
 	var profiles: Array=[]
 	for r: Vector4 in rings:
