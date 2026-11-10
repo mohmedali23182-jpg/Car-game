@@ -31,9 +31,9 @@ func home() -> void:
 	MasalikUI.button(actions,"سجل الرحلات والاعتمادات",credits)
 	var preview_holder := SubViewportContainer.new();preview_holder.custom_minimum_size=Vector2(540,360);preview_holder.size_flags_horizontal=Control.SIZE_EXPAND_FILL;preview_holder.stretch=true;row.add_child(preview_holder)
 	preview=SubViewport.new();preview.size=Vector2i(750,440);preview.own_world_3d=true;preview_holder.add_child(preview)
-	var world_root := Node3D.new();preview.add_child(world_root)
+	var world_root := Node3D.new();preview.add_child(world_root);studio_environment(world_root)
 	display_car=VehicleVisual.new();world_root.add_child(display_car);display_car.build(VehicleFleetRegistry.get_spec(selected),PersistenceManager.save_data.vehicle_customizations.get(selected,{}))
-	var cam := Camera3D.new();cam.position=Vector3(4,2.4,5.8);world_root.add_child(cam);cam.look_at(Vector3(0,0.5,0));cam.current=true
+	var cam := Camera3D.new();cam.fov=32;cam.position=Vector3(3.5,1.9,4.8);world_root.add_child(cam);cam.look_at(Vector3(0,0.5,0));cam.current=true
 	var light := DirectionalLight3D.new();light.rotation_degrees=Vector3(-35,-30,0);light.light_energy=1.5;world_root.add_child(light)
 	var fill := OmniLight3D.new();fill.position=Vector3(-3,3,-3);fill.omni_range=15;fill.light_color=Color("a9c4cf");fill.light_energy=2;world_root.add_child(fill)
 	var floor_mesh := MeshInstance3D.new();var plane := PlaneMesh.new();plane.size=Vector2(25,25);floor_mesh.mesh=plane;floor_mesh.position.y=-0.96
@@ -87,16 +87,16 @@ func garage() -> void:
 		MasalikUI.button(row,s.nameAr,func(): selected=id;garage())
 	var spec: Dictionary=VehicleFleetRegistry.get_spec(selected)
 	MasalikUI.label(content,spec.titleAr+" · "+str(spec.baseMassKg)+" كجم",24)
-	var container := SubViewportContainer.new();container.custom_minimum_size=Vector2(700,270);container.stretch=true;content.add_child(container)
+	var container := SubViewportContainer.new();container.custom_minimum_size=Vector2(700,360);container.stretch=true;content.add_child(container)
 	container.gui_input.connect(func(event: InputEvent):
 		if event is InputEventScreenDrag: display_car.rotation.y+=event.relative.x*0.01;rotate_preview=false
 		if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT): display_car.rotation.y+=event.relative.x*0.01;rotate_preview=false)
 	preview=SubViewport.new();preview.size=Vector2i(1000,300);preview.own_world_3d=true;container.add_child(preview)
-	var root := Node3D.new();preview.add_child(root)
+	var root := Node3D.new();preview.add_child(root);studio_environment(root)
 	display_car=VehicleVisual.new();root.add_child(display_car)
 	var custom: Dictionary=PersistenceManager.save_data.vehicle_customizations.get(selected,{})
 	display_car.build(spec,custom)
-	var cam := Camera3D.new();cam.position=Vector3(4,2.4,5.5);root.add_child(cam);cam.look_at(Vector3(0,0.5,0));cam.current=true
+	var cam := Camera3D.new();cam.fov=32;cam.position=Vector3(3.5,1.9,4.8);root.add_child(cam);cam.look_at(Vector3(0,0.5,0));cam.current=true
 	var light := DirectionalLight3D.new();light.rotation_degrees=Vector3(-45,-30,0);light.light_energy=2;root.add_child(light)
 	var fill := OmniLight3D.new();fill.position=Vector3(-3,3,-2);fill.omni_range=20;root.add_child(fill)
 	var paint_row := HBoxContainer.new();content.add_child(paint_row)
@@ -161,3 +161,7 @@ func credits() -> void:
 	MasalikUI.button(content,"رجوع",home)
 func _process(delta: float) -> void:
 	if is_instance_valid(display_car) and rotate_preview: display_car.rotation.y+=delta*0.35
+
+func studio_environment(parent: Node3D) -> void:
+	var env := Environment.new();env.background_mode=Environment.BG_COLOR;env.background_color=Color("15232b");env.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR;env.ambient_light_color=Color("b3c2c5");env.ambient_light_energy=0.7;env.tonemap_mode=Environment.TONE_MAPPER_FILMIC
+	var world := WorldEnvironment.new();world.environment=env;parent.add_child(world)

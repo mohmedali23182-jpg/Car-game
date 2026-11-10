@@ -19,6 +19,7 @@ var tow_attached := false
 var capture_clock := 0.0
 var instruments: DrivingInstruments
 var starting_parked := true
+var photo_previous_view := 0
 var mini_map: MasalikMap
 func _ready() -> void:
 	world=MasalikWorld.new();add_child(world)
@@ -141,7 +142,10 @@ func show_panel(title: String) -> VBoxContainer:
 	var v := MasalikUI.panel(hud,title);overlay=v.get_parent().get_parent();return v
 func resume() -> void:
 	if is_instance_valid(overlay): overlay.queue_free()
-	controls.editing=false;controls.reset_input();controls.show();top.show();status.show();navigation.show();mini_map.show();instruments.show();hud.get_node("GearControls").show();get_tree().paused=false;camera.photo=false
+	controls.editing=false;controls.reset_input();controls.show();top.show();status.show();navigation.show();mini_map.show();instruments.show();hud.get_node("GearControls").show();get_tree().paused=false
+	if camera.photo:
+		camera.current_view=photo_previous_view;camera.process_mode=Node.PROCESS_MODE_INHERIT
+	camera.photo=false
 func utility_menu() -> void:
 	if is_instance_valid(overlay): return
 	var v := show_panel("أدوات الرحلة")
@@ -204,7 +208,7 @@ func map_screen() -> void:
 	MasalikUI.button(v,"متابعة القيادة",resume)
 func photo_mode() -> void:
 	var v := show_panel("التصوير — اسحب الشاشة لتدوير الكاميرا")
-	camera.photo=true;camera.current_view=5;camera.process_mode=Node.PROCESS_MODE_ALWAYS
+	photo_previous_view=camera.current_view;camera.photo=true;camera.current_view=5;camera.process_mode=Node.PROCESS_MODE_ALWAYS
 	MasalikUI.slider(v,"التقريب",camera.orbit_distance,2,40,func(value: float): camera.orbit_distance=value)
 	MasalikUI.button(v,"التقاط صورة محلية",func():
 		overlay.hide();await RenderingServer.frame_post_draw

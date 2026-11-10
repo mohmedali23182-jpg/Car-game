@@ -14,7 +14,7 @@ func material(color: String, metal := 0.0, rough := 0.7) -> StandardMaterial3D:
 	return m
 func build(s: Dictionary, custom: Dictionary = {}) -> void:
 	spec=s
-	paint=material(str(custom.get("paint",s.defaultPaintHex)),0.65,0.26)
+	paint=material(str(custom.get("paint",s.defaultPaintHex)),0.38,0.31)
 	var glass := material("253e47",0.3,0.16);glass.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA;glass.albedo_color.a=0.40
 	var black := material("161d22",0.1,0.83)
 	var silver := material(str(custom.get("rim","a7adb2")),0.85,0.24)
@@ -40,8 +40,10 @@ func build(s: Dictionary, custom: Dictionary = {}) -> void:
 		Vector4(front+length*0.25,half,0.03,belt),
 		Vector4(rear-0.26,half,0.04,belt),
 		Vector4(rear,half*0.90,0.08,belt*0.84)],paint)
+	part(Vector3(width*0.91,belt*0.82,0.055),Vector3(0,belt*0.46,rear+0.018),paint)
 	# Dark sill and chrome bumper strips separate the body panels.
 	for side in [-1.0,1.0]:
+		part(Vector3(0.045,belt*0.72,float(s.wheelbaseM)*0.68),Vector3(side*(half+0.005),belt*0.43,0.05),paint)
 		part(Vector3(0.10,0.16,length*0.8),Vector3(side*(half+0.01),0.08,0),black)
 		part(Vector3(0.08,0.035,length*0.7),Vector3(side*(half+0.015),belt*0.75,0.1),silver)
 		part(Vector3(0.25,0.13,0.14),Vector3(side*(half+0.10),belt+0.3,front+length*0.31),trim)
@@ -147,7 +149,7 @@ func quad(vertices: Array, mat: Material) -> void:
 	st.generate_normals();var mi := MeshInstance3D.new();mi.mesh=st.commit();mi.material_override=mat;add_child(mi)
 func beam(a: Vector3,b: Vector3, thickness: float,mat: Material) -> void:
 	var node := MeshInstance3D.new();var mesh := BoxMesh.new();mesh.size=Vector3(thickness,a.distance_to(b),thickness);node.mesh=mesh;node.position=(a+b)*0.5;node.material_override=mat;add_child(node)
-	if absf((b-a).normalized().dot(Vector3.FORWARD))<0.98: node.basis=Basis.looking_at((b-a).normalized(),Vector3.FORWARD).rotated(Vector3.RIGHT,PI/2)
+	node.quaternion=Quaternion(Vector3.UP,(b-a).normalized())
 func part(size: Vector3,pos: Vector3,mat: Material) -> void: part_on(self,size,pos,mat)
 func part_on(parent: Node3D,size: Vector3,pos: Vector3,mat: Material) -> void:
 	var mi := MeshInstance3D.new();var box := BoxMesh.new();box.size=size;mi.mesh=box;mi.position=pos;mi.material_override=mat;parent.add_child(mi)

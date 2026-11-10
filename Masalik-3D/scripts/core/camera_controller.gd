@@ -19,6 +19,14 @@ func _process(delta: float) -> void:
 	if not is_instance_valid(target_vehicle): return
 	var pos := target_vehicle.global_position
 	var offset: Vector3=offsets[current_view]
+	if current_view==2 and target_vehicle is RaycastVehicleBody:
+		var spec: Dictionary=target_vehicle.spec
+		var length := float(spec.wheelbaseM)+1.45
+		var bus: bool=spec.id=="hafilat"
+		var truck: bool=spec.id=="jabal"
+		var roof := 1.03 if spec.id=="madina" else (0.87 if spec.id=="barq" else (1.95 if bus else 1.46))
+		var cabin_front := -length*0.5+length*(0.06 if bus or truck else 0.28)
+		offset=Vector3(-float(spec.trackWidthM)*0.22,minf(1.4,roof-0.16),cabin_front+1.65)
 	if current_view==5 or photo:
 		offset=Vector3(sin(orbit.x)*cos(orbit.y),sin(clampf(orbit.y,-0.1,1.4)),cos(orbit.x)*cos(orbit.y))*orbit_distance
 	var forward := -target_vehicle.global_basis.z

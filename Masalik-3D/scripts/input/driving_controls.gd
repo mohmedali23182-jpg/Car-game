@@ -90,7 +90,10 @@ func active(key: String) -> bool:
 	return true
 func max_angle() -> float: return deg_to_rad(float(PersistenceManager.save_data.wheel_angle))
 func _process(delta: float) -> void:
-	if editing: return
+	if editing:
+		for key in captions:
+			var rect := rect_for(key);captions[key].position=rect.position+Vector2(0,rect.size.y-4);captions[key].size=Vector2(rect.size.x,25)
+		queue_redraw();return
 	if wheel_finger==-1: wheel_angle=move_toward(wheel_angle,0,delta*float(PersistenceManager.save_data.steering_return))
 	var actions: Array=pointers.values()
 	var key_left := Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)
@@ -116,7 +119,8 @@ func _process(delta: float) -> void:
 	brake=move_toward(brake,target_brake,delta*9)
 	handbrake=actions.has("hand") or Input.is_physical_key_pressed(KEY_H)
 	if not Input.get_connected_joypads().is_empty():
-		throttle=maxf(throttle,maxf(0,Input.get_joy_axis(0,JOY_AXIS_TRIGGER_RIGHT)))
+		var trigger := maxf(0,Input.get_joy_axis(0,JOY_AXIS_TRIGGER_RIGHT))
+		if trigger>absf(throttle): throttle=trigger*(-1.0 if reverse else 1.0)
 		brake=maxf(brake,maxf(0,Input.get_joy_axis(0,JOY_AXIS_TRIGGER_LEFT)))
 	for key in captions:
 		var rect := rect_for(key);var l: Label=captions[key]
