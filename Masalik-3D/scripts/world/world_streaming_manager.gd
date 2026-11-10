@@ -15,11 +15,14 @@ var tick := 0.0
 var last_index := 10
 var radius := 2
 var materials: Dictionary = {}
+var terrain_offsets: Array[float]=[]
 var service_distances := [180.0,3500.0,6100.0,8500.0,11000.0,13700.0]
 func _ready() -> void:
 	regions = JSON.parse_string(FileAccess.get_file_as_string("res://data/maps/regions.json"))
 	noise.seed = 326
-	noise.frequency = 0.006
+	noise.frequency=0.006
+	for x in range(-700,701,25): terrain_offsets.append(float(x))
+	terrain_offsets.append_array([-12.0,-8.0,-5.5,5.5,8.0,12.0]);terrain_offsets.sort()
 	build_path()
 	for key in ["asphalt", "mud", "sand", "terrain", "stone", "window", "green", "gold", "sea"]:
 		var m := StandardMaterial3D.new()
@@ -36,6 +39,7 @@ func _ready() -> void:
 	var white := StandardMaterial3D.new();white.albedo_color=Color("dcd7c7");white.roughness=0.82;materials.white=white
 	var steel := StandardMaterial3D.new();steel.albedo_color=Color("747d80");steel.metallic=0.7;steel.roughness=0.42;materials.steel=steel
 	var leaves := ShaderMaterial.new();leaves.shader=load("res://assets/shaders/foliage.gdshader");materials.foliage=leaves
+	var crop_material := StandardMaterial3D.new();crop_material.albedo_color=Color("2d401d");crop_material.roughness=1.0;materials.crops=crop_material
 	update_chunks(distance)
 func build_path() -> void:
 	points.clear()
@@ -156,10 +160,7 @@ func build_chunk(id: int) -> Node3D:
 	for surface in roads: mesh_body(root,roads[surface],materials[surface],surface)
 	var terrain := SurfaceTool.new()
 	terrain.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var offsets: Array[float]=[]
-	for lateral in range(-700,701,25): offsets.append(float(lateral))
-	offsets.append_array([-12.0,-8.0,-5.5,5.5,8.0,12.0])
-	offsets.sort()
+	var offsets: Array[float]=terrain_offsets
 	for i in range(first, end, 5):
 		for j in range(offsets.size()-1):
 			var a := height_point(i, offsets[j]); var b := height_point(i, offsets[j+1])
@@ -243,11 +244,20 @@ func build_chunk(id: int) -> Node3D:
 			for side in [-1.0,1.0]: box_node(frame,Vector3(1.2,7,16),Vector3(side*6.2,3.5,0),materials.stone,true)
 			box_node(frame,Vector3(13.5,1.2,16),Vector3(0,7.2,0),materials.stone,true)
 	if region==0:
+		var crops := SurfaceTool.new();crops.begin(Mesh.PRIMITIVE_TRIANGLES)
 		for i in range(first+10,end-10,20):
 			for lateral in [-30.0,-50.0,-70.0]:
-				var plot := Node3D.new();root.add_child(plot);plot.position=height_point(i,lateral);plot.basis=basis_at(i*STEP)
-				box_node(plot,Vector3(15,0.5,0.5),Vector3(0,0.1,8),materials.stone,true)
-				for row in range(6): box_node(plot,Vector3(13,0.09,0.75),Vector3(0,0.16,-6+row*2),materials.green,false)
+				for row in range(6):
+					var index0 := float(i)-1.5+float(row)*0.6
+					for column in range(6):
+						var left: float=lateral-6.5+float(column)*13.0/6
+						var right := left+13.0/6
+						var a := terrain_surface(index0,left)+Vector3.UP*0.035
+						var b := terrain_surface(index0,right)+Vector3.UP*0.035
+						var c := terrain_surface(index0+0.2,left)+Vector3.UP*0.035
+						var d := terrain_surface(index0+0.2,right)+Vector3.UP*0.035
+						triangle(crops,a,b,c);triangle(crops,b,d,c)
+		crops.generate_normals();var field := MeshInstance3D.new();field.mesh=crops.commit();field.material_override=materials.crops;root.add_child(field)
 	for s in service_distances:
 		if int(s/CHUNK)==id: service_plaza(root,s)
 	pack_architecture(root)
@@ -260,7 +270,7 @@ func pack_architecture(root: Node3D) -> void:
 		var key := mat.get_instance_id()
 		if not groups.has(key): groups[key]={"material":mat,"transforms":[]}
 		var transform: Transform3D=root.global_transform.affine_inverse()*mi.global_transform
-		transform.basis=transform.basis.scaled(mi.mesh.size)
+		transform.basis=transform.basis*Basis.from_scale(mi.mesh.size)
 		groups[key].transforms.append(transform)
 		# Preserve collision child bodies; only the old visual draw is hidden.
 		mi.hide()
@@ -319,3 +329,14 @@ func service_plaza(parent: Node3D,s: float) -> void:
 	for space in range(4):
 		box_node(area,Vector3(0.10,0.02,5),Vector3(10.5+space*2.8,0.025,7),materials.white,false)
 	text_sign(area,"مواقف  P",Vector3(12,2.6,11),Vector2(3.0,0.65),true)
+
+func terrain_surface(index: float,lateral: float) -> Vector3:
+	# Barycentric sample of the same triangles used by the rendered/collidable terrain.
+	var first := clampi(int(floorf(index/5))*5,0,3745)
+	var next := first+5;var v := clampf((index-first)/5,0,1)
+	var offsets: Array[float]=terrain_offsets
+	var j := 0
+	while j<offsets.size()-2 and lateral>offsets[j+1]: j+=1
+	var u := clampf((lateral-offsets[j])/(offsets[j+1]-offsets[j]),0,1)
+	var a := height_point(first,offsets[j]);var b := height_point(first,offsets[j+1]);var c := height_point(next,offsets[j]);var d := height_point(next,offsets[j+1])
+	return a+(b-a)*u+(c-a)*v if u+v<=1 else d+(b-d)*(1-v)+(c-d)*(1-u)

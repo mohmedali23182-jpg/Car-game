@@ -2,6 +2,7 @@ class_name VehicleVisual
 extends Node3D
 ## Original offline vehicle meshes. Distinct regional silhouettes; no brand logos.
 var paint := StandardMaterial3D.new()
+var rim_material: StandardMaterial3D
 var wheels: Array[Node3D] = []
 var headlights: Array[SpotLight3D] = []
 var brake_material := StandardMaterial3D.new()
@@ -20,7 +21,8 @@ func build(s: Dictionary, custom: Dictionary = {}) -> void:
 	var glass := material("20343f",0.35,0.18)
 	var windscreen := material("687f87",0.05,0.12);windscreen.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA;windscreen.albedo_color.a=0.12
 	var black := material("161d22",0.1,0.83)
-	var silver := material(str(custom.get("rim","a7adb2")),0.85,0.24)
+	var silver := material("a7adb2",0.85,0.24)
+	rim_material=material(str(custom.get("rim","c6c3b9")),0.85,0.24)
 	var trim := material("424745",0.3,0.55)
 	var seat := material("533d30",0,0.95)
 	var width: float=float(s.trackWidthM)
@@ -140,7 +142,7 @@ func build(s: Dictionary, custom: Dictionary = {}) -> void:
 		var rim := CylinderMesh.new();rim.top_radius=radius*0.60;rim.bottom_radius=rim.top_radius;rim.height=tire_width+0.012;rim.radial_segments=20
 		mi=MeshInstance3D.new();mi.mesh=rim;mi.rotation.z=PI/2;mi.material_override=trim;pivot.add_child(mi)
 		for n in range(6):
-			var spoke := MeshInstance3D.new();var box := BoxMesh.new();box.size=Vector3(tire_width+0.03,radius*0.95,0.065);spoke.mesh=box;spoke.rotation.x=n*PI/3;spoke.material_override=silver;pivot.add_child(spoke)
+			var spoke := MeshInstance3D.new();var box := BoxMesh.new();box.size=Vector3(tire_width+0.03,radius*0.95,0.065);spoke.mesh=box;spoke.rotation.x=n*PI/3;spoke.material_override=rim_material;pivot.add_child(spoke)
 		for n in range(18):
 			var tread := MeshInstance3D.new();var box := BoxMesh.new();box.size=Vector3(tire_width*1.01,0.018 if sedan or bus else 0.035,0.045 if sedan or bus else 0.075);tread.mesh=box;tread.material_override=trim;tread.position=Vector3(0,cos(n*TAU/18)*radius,sin(n*TAU/18)*radius);tread.rotation.x=n*TAU/18;pivot.add_child(tread)
 		batch_static(pivot)

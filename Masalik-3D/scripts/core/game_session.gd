@@ -19,6 +19,7 @@ var tow_attached := false
 var capture_clock := 0.0
 var dust: CPUParticles3D
 var road_wetness := 0.0
+var light_override := -1
 var instruments: DrivingInstruments
 var starting_parked := true
 var photo_previous_view := 0
@@ -122,6 +123,10 @@ func _physics_process(delta: float) -> void:
 			tow.apply_central_force(force);car.apply_central_force(-force)
 	if car.position.y<world.point_at(world.distance).y-80: recover()
 func _process(delta: float) -> void:
+	var auto_lights := weather.hour<6.5 or weather.hour>17.8 or weather.current_weather_preset in ["fog","dense_fog","heavy_rain"]
+	for lamp in car.visual.headlights: lamp.visible=auto_lights if light_override<0 else light_override==1
+	for rig in traffic.visuals:
+		for lamp in rig.headlights: lamp.visible=auto_lights
 	save_clock+=delta;capture_clock+=delta
 	if save_clock>15: save_clock=0;save_session()
 	var safe := controls.safe_rect()
@@ -148,8 +153,10 @@ func _notification(what: int) -> void:
 		if not get_tree().paused: pause_menu()
 	if what==NOTIFICATION_WM_GO_BACK_REQUEST and is_instance_valid(car): pause_menu()
 func recover() -> void:
-	car.freeze=true;car.position=world.point_at(world.distance)+Vector3.UP*1.2;car.basis=world.basis_at(world.distance);car.linear_velocity=Vector3.ZERO;car.angular_velocity=Vector3.ZERO;car.freeze=false;controls.reset_input();starting_parked=true
-	if missions.running and missions.direction<0: car.basis=car.basis.rotated(Vector3.UP,PI)
+	var orientation := world.basis_at(world.distance)
+	if missions.running and missions.direction<0: orientation=orientation.rotated(Vector3.UP,PI)
+	car.teleport_to(Transform3D(orientation,world.point_at(world.distance)+Vector3.UP*1.2))
+	controls.reset_input();starting_parked=true
 func show_panel(title: String) -> VBoxContainer:
 	controls.reset_input();controls.hide();top.hide();status.hide();navigation.hide();mini_map.hide();instruments.hide();hud.get_node("GearControls").hide()
 	get_tree().paused=true
@@ -165,7 +172,7 @@ func utility_menu() -> void:
 	var v := show_panel("أدوات الرحلة")
 	MasalikUI.button(v,"خريطة الطريق",func(): resume();map_screen())
 	MasalikUI.button(v,"الأنوار الأمامية",func():
-		for lamp in car.visual.headlights: lamp.visible=not lamp.visible
+		light_override=0 if car.visual.headlights[0].visible else 1
 		resume())
 	MasalikUI.button(v,"استعادة المركبة على الطريق",func(): recover();resume())
 	MasalikUI.button(v,"التصوير",func(): resume();photo_mode())
@@ -190,7 +197,7 @@ func pause_menu() -> void:
 	MasalikUI.button(v,"استوديو التحكم",control_studio)
 	MasalikUI.button(v,"نظام الدفع: "+car.drivetrain,func(): car.set_drivetrain_next();resume())
 	MasalikUI.button(v,"قفل الدفرنس: "+str(car.diff_lock),func(): car.diff_lock=not car.diff_lock;resume())
-	MasalikUI.button(v,"مساعدات ABS / TCS / ESC: "+str(car.assists),func(): car.assists=not car.assists;resume())
+	MasalikUI.button(v,"مساعدات الثبات والتماسك: "+str(car.assists),func(): car.assists=not car.assists;resume())
 	MasalikUI.button(v,"مساعد نزول المنحدرات HDC: "+str(car.hdc),func(): car.hdc=not car.hdc;resume())
 	MasalikUI.button(v,"صيانة وتعبئة الوقود — 100 عملة",func():
 		if int(PersistenceManager.save_data.coins)>=100:

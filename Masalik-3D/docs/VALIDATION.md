@@ -41,6 +41,8 @@ The first CI APK (593a989) rendered the car falling below the map: road/terrain 
 
 ## Experience refresh — 2026-11-11
 
-See DRIVING_EXPERIENCE_REFRESH.md for the new 206-assertion suite, completed six-station proximity/transaction flow, body/cabin changes, open-valley/terrace/tree pass, native dashboard/pedals and layered local sound. The older matrix above describes earlier checkpoints; physical Android acceptance remains pending for the newest code, despite the user's successful launch of the original test APK.
+See DRIVING_EXPERIENCE_REFRESH.md for the new 210-assertion suite, completed six-station proximity/transaction flow, body/cabin changes, open-valley/terrace/tree pass, native dashboard/pedals and layered local sound. The older matrix above describes earlier checkpoints; physical Android acceptance remains pending for the newest code, despite the user's successful launch of the original test APK.
 
 The native photo album now previews actual locally saved captures and provides local export through a system file picker; CI also renders this positive album flow using a real runtime capture.
+
+Final regression repairs route vehicle recovery through PhysicsDirectBodyState3D, samples crop rows on actual terrain triangles, preserves local mesh transforms during architecture batching, and applies tire contact forces at the road contact point. Tests assert recovery persistence and the physically correct body pitch under acceleration/braking.

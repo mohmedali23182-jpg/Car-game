@@ -71,16 +71,28 @@ func run() -> void:
 	check(car.position.y>0.3 and car.position.y<2,"suspension supports chassis without terrain penetration")
 	var start := car.position
 	car.set_drive_inputs(1,0,0,false)
-	for i in range(180): await get_tree().physics_frame
+	var acceleration_pitch := 0.0
+	for i in range(180):
+		await get_tree().physics_frame
+		if i==45: acceleration_pitch=(-car.global_basis.z).y
+	check(acceleration_pitch>0.005,"contact forces transfer weight rearward under acceleration")
 	check(car.position.distance_to(start)>5 and car.current_speed_kmh>10,"engine forces accelerate rigidbody")
 	check(car.rpm>float(car.spec.idleRpm),"RPM responds to wheel speed")
 	var speed := car.current_speed_kmh
 	car.set_drive_inputs(0,1,0,false)
-	for i in range(180): await get_tree().physics_frame
+	var braking_pitch := 0.0
+	for i in range(180):
+		await get_tree().physics_frame
+		if i==30: braking_pitch=(-car.global_basis.z).y
+	check(braking_pitch< -0.005,"braking transfers load forward with nose dive")
 	check(car.current_speed_kmh<speed*0.5,"brake forces slow chassis")
 	car.set_drive_inputs(-1,0,0,false)
 	for i in range(120): await get_tree().physics_frame
 	check(car.linear_velocity.dot(-car.global_basis.z)<-0.5,"reverse propulsion")
+	car.teleport_to(Transform3D(Basis.IDENTITY,Vector3(20,1.3,-15)))
+	await get_tree().physics_frame;await get_tree().physics_frame
+	check(car.position.distance_to(Vector3(20,1.3,-15))<2,"physics-owned recovery transform persists")
+	check(car.linear_velocity.length()<2,"recovery clears linear and angular motion")
 	car.set_drivetrain_next();check(car.drivetrain in car.spec.supportedDrivetrains,"supported drivetrain selection")
 	var completed_before: Dictionary=store.save_data.duplicate(true)
 	var m: Dictionary=missions.catalog.missions[0]

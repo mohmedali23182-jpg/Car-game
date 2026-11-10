@@ -107,7 +107,7 @@ func garage() -> void:
 	var picker := ColorPickerButton.new();picker.color=Color(custom.get("paint",spec.defaultPaintHex));picker.custom_minimum_size=Vector2(120,45);paint_row.add_child(picker)
 	picker.color_changed.connect(func(c: Color): set_custom("paint",c.to_html());display_car.paint.albedo_color=c)
 	var rim := ColorPickerButton.new();rim.text="الجنوط";rim.color=Color(custom.get("rim","c6c3b9"));paint_row.add_child(rim)
-	rim.color_changed.connect(func(c: Color): set_custom("rim",c.to_html()))
+	rim.color_changed.connect(func(c: Color): set_custom("rim",c.to_html());display_car.rim_material.albedo_color=c)
 	MasalikUI.slider(content,"ارتفاع التعليق",float(custom.get("height",0)), -0.08,0.18,func(v: float): set_custom("height",v))
 	var roof := CheckButton.new();roof.text="حامل أمتعة السقف";roof.button_pressed=bool(custom.get("roof",false));content.add_child(roof);roof.toggled.connect(func(on: bool): set_custom("roof",on);garage())
 	var tires := OptionButton.new();content.add_child(tires)

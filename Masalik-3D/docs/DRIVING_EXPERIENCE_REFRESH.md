@@ -33,6 +33,8 @@ Vehicle bodies now have full lower door sections, painted wheel arches and lower
 
 Original generated audio now includes separate idle/load engine layers, shifts, suspension, gravel, rain/thunder, wind and a 48-second plucked travel theme. These are local synthesized assets, not recordings of real vehicle/instrument brands. Wet asphalt darkens and changes roughness over time; dry dirt/sand driving emits restrained local dust.
 
-Latest local assertions: 206 passes, plus native UI tests covering station transactions, startup parking and camera restoration. A fresh continuous-route regression and actual rendered screenshots are required by CI before publishing this test build.
+Latest local assertions: 210 passes, plus native UI tests covering station transactions, startup parking and camera restoration. A fresh continuous-route regression and actual rendered screenshots are required by CI before publishing this test build.
 
 The native photo album now previews actual locally saved captures and provides local export through a system file picker; CI also renders this positive album flow using a real runtime capture.
+
+Final regression repairs route vehicle recovery through PhysicsDirectBodyState3D, samples crop rows on actual terrain triangles, preserves local mesh transforms during architecture batching, and applies tire contact forces at the road contact point. Tests assert recovery persistence and the physically correct body pitch under acceleration/braking.

@@ -29,6 +29,8 @@ var spin := 0.0
 var shift_cooldown := 0.0
 var suspension: float
 var wheel_radius: float
+var pending_transform := Transform3D.IDENTITY
+var teleport_pending := false
 func _ready() -> void:
 	if spec.is_empty(): spec = VehicleFleetRegistry.get_spec("shahiq")
 	mass = float(spec.baseMassKg)+float(spec.maxCargoKg)*float(custom.get("cargo",0.0))/100.0
@@ -59,6 +61,14 @@ func _ready() -> void:
 		ray.target_position=Vector3.DOWN*(suspension+wheel_radius)
 		ray.add_exception(self); add_child(ray); rays.append(ray)
 	body_entered.connect(_on_body_entered)
+func teleport_to(destination: Transform3D) -> void:
+	pending_transform=destination;teleport_pending=true;freeze=false;sleeping=false
+	set_drive_inputs(0,1,0,false)
+func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if not teleport_pending: return
+	state.transform=pending_transform;state.linear_velocity=Vector3.ZERO;state.angular_velocity=Vector3.ZERO
+	linear_velocity=Vector3.ZERO;angular_velocity=Vector3.ZERO;teleport_pending=false
+	reset_physics_interpolation()
 func set_drive_inputs(throttle: float, brake: float, steer: float, handbrake: bool) -> void:
 	throttle_input=clampf(throttle,-1,1); brake_input=clampf(brake,0,1); steer_input=clampf(steer,-1,1); handbrake_active=handbrake
 func shift(direction: int) -> void:
@@ -72,6 +82,7 @@ func _on_body_entered(_body: Node) -> void:
 	var loss := maxf(0.0,linear_velocity.length()-3.0)*1.8
 	health=maxf(0,health-loss); cargo_integrity=maxf(0,cargo_integrity-loss*0.6); collided.emit(loss)
 func _physics_process(delta: float) -> void:
+	if teleport_pending: return
 	var forward := -global_basis.z
 	var speed := linear_velocity.dot(forward)
 	current_speed_kmh = linear_velocity.length()*3.6
@@ -98,7 +109,7 @@ func _physics_process(delta: float) -> void:
 			var hit := ray.get_collision_point()
 			var normal := ray.get_collision_normal()
 			length=clampf(ray.global_position.distance_to(hit)-wheel_radius,0,suspension)
-			var offset := ray.global_position-global_position
+			var offset := hit-global_position
 			var velocity := linear_velocity+angular_velocity.cross(offset)
 			var spring := maxf(0,(suspension-length)*float(spec.suspensionStiffness)-velocity.dot(normal)*float(spec.suspensionDamping))
 			spring=minf(spring,mass*9.81*2.0)

@@ -17,7 +17,10 @@ func run() -> void:
 	await get_tree().create_timer(0.5).timeout;await capture("album");game.resume()
 	game.camera.current_view=2
 	await get_tree().create_timer(0.6).timeout;await capture("interior")
-	game.car.freeze=true;game.car.position=game.world.point_at(160)+Vector3.UP*1.2;game.car.basis=game.world.basis_at(160);game.world.last_index=40;game.world.update_chunks(160)
-	game.camera.current_view=5;game.camera.orbit=Vector2(-0.7,0.35);game.camera.orbit_distance=15
+	game.world.update_chunks(160);game.car.teleport_to(Transform3D(game.world.basis_at(160),game.world.point_at(160)+Vector3.UP*1.2))
+	await get_tree().physics_frame;await get_tree().physics_frame
+	game.world.distance=game.world.nearest_distance(game.car.global_position,true)
+	if absf(game.world.distance-160)>12: push_error("Visual capture teleport regression");get_tree().quit(1);return
+	game.camera.current_view=5;game.camera.orbit=Vector2(-1.0,0.40);game.camera.orbit_distance=15
 	await get_tree().create_timer(1.0).timeout;await capture("service-plaza")
 	print("VISUAL_CAPTURE_PASS");get_tree().quit()

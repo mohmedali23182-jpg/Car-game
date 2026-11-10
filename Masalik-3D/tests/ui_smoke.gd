@@ -25,7 +25,9 @@ func run() -> void:
 	print("UI PASS photo mode restores previous camera")
 	var original_save: Dictionary=PersistenceManager.save_data.duplicate(true)
 	PersistenceManager.save_data.coins=30
-	game.car.freeze=true;game.car.position=game.world.service_position(180.0)+Vector3.UP;game.car.current_speed_kmh=0;game.car.health=70;game.car.fuel=10
+	game.car.teleport_to(Transform3D(game.world.basis_at(180),game.world.service_position(180.0)+Vector3.UP*1.2))
+	await get_tree().physics_frame;await get_tree().physics_frame
+	game.car.freeze=true;game.car.current_speed_kmh=0;game.car.health=70;game.car.fuel=10
 	game.service_station()
 	if int(PersistenceManager.save_data.coins)!=5 or game.car.health!=100 or game.car.fuel!=float(game.car.spec.fuelTankLiters):
 		push_error("Station transaction failed");get_tree().quit(1);return
