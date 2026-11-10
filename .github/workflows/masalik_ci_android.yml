@@ -89,8 +89,10 @@ jobs:
           sha256sum "$APK" | tee build/android/SHA256SUMS
       - name: Render actual desktop runtime evidence
         run: |
-          XDG_DATA_HOME=/tmp/masalik-render xvfb-run -a godot --path Masalik-3D res://scenes/main/main_game.tscn --audio-driver Dummy -- --capture
-          find /tmp/masalik-render -name masalik-runtime.png -exec cp {} build/android/ \;
+          XDG_DATA_HOME=/tmp/masalik-render xvfb-run -a timeout 120 godot --path Masalik-3D res://tests/visual_capture.tscn --audio-driver Dummy 2>&1 | tee build/visual.log
+          grep VISUAL_CAPTURE_PASS build/visual.log
+          ! grep -E 'SCRIPT ERROR|^ERROR:' build/visual.log
+          find /tmp/masalik-render -name 'masalik-*.png' -exec cp {} build/android/ \;
       - uses: actions/upload-artifact@v4
         if: always()
         with:

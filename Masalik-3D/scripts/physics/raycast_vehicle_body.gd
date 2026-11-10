@@ -78,7 +78,8 @@ func _physics_process(delta: float) -> void:
 		if rpm>float(spec.redlineRpm)*0.82 and gear<int(spec.forwardGearsCount): shift(1)
 		elif rpm<float(spec.redlineRpm)*0.28 and gear>1: shift(-1)
 	var steer_limit := float(spec.maxSteerAngleRad)/(1.0+absf(speed)*0.018)
-	current_steer_rad=move_toward(current_steer_rad,steer_input*steer_limit,float(spec.steerSpeedRadPerSec)*delta)
+	var target_steer := signf(steer_input)*pow(absf(steer_input),1.15)*steer_limit
+	current_steer_rad=move_toward(current_steer_rad,target_steer,float(spec.steerSpeedRadPerSec)/(1.0+absf(speed)*0.025)*delta)
 	spin -= speed/wheel_radius*delta
 	grounded=0
 	for i in range(4):
@@ -113,7 +114,8 @@ func _physics_process(delta: float) -> void:
 			if hdc and absf(speed)>5: braking=maxf(braking,0.6)
 			if handbrake_active and i>=2: braking=1
 			var brake_force := -velocity.dot(wheel_forward)*mass/4.0/maxf(delta,0.001)
-			long_force += clampf(brake_force,-float(spec.maxBrakeForceN)*braking*0.25,float(spec.maxBrakeForceN)*braking*0.25)
+			var brake_share := 0.30 if i<2 else 0.20
+			long_force += clampf(brake_force,-float(spec.maxBrakeForceN)*braking*brake_share,float(spec.maxBrakeForceN)*braking*brake_share)
 			long_force -= speed*float(spec.rollingResistance)*0.025
 			var lateral := -velocity.dot(wheel_right)*mass*2.5/4.0
 			if handbrake_active and i>=2: lateral*=0.25

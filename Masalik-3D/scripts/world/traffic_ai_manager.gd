@@ -6,13 +6,15 @@ var pool: Array[CharacterBody3D] = []
 var distances: Array[float] = []
 var speeds: Array[float] = []
 var active_count := 6
+var visuals: Array[VehicleVisual]=[]
+var wheel_spin: Array[float]=[]
 func _ready() -> void:
 	for i in range(8):
 		var car := CharacterBody3D.new()
 		car.collision_layer=2; car.collision_mask=3
 		var shape := CollisionShape3D.new();var box := BoxShape3D.new();box.size=Vector3(1.8,1.5,4)
 		shape.shape=box;shape.position.y=0.5;car.add_child(shape)
-		var visual := VehicleVisual.new();car.add_child(visual);visual.build(VehicleFleetRegistry.get_spec(["madina","saqr","hafilat"][i%3]))
+		var visual := VehicleVisual.new();car.add_child(visual);visual.build(VehicleFleetRegistry.get_spec(["madina","saqr","hafilat"][i%3]));visuals.append(visual);wheel_spin.append(0.0)
 		add_child(car);pool.append(car);distances.append(-1);speeds.append(0)
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(player) or world==null: return
@@ -40,3 +42,8 @@ func _physics_process(delta: float) -> void:
 		if collision==null: distances[i]=next_s
 		else: speeds[i]=0
 		car.basis=current if dir>0 else current.rotated(Vector3.UP,PI)
+
+		wheel_spin[i]-=speeds[i]*delta/float(visuals[i].spec.wheelRadiusM)
+		for wheel_id in range(4):
+			visuals[i].wheels[wheel_id].get_child(0).rotation.x=wheel_spin[i]
+			visuals[i].wheels[wheel_id].rotation.y=clampf(future.z.signed_angle_to(current.z,Vector3.UP),-0.4,0.4) if wheel_id<2 else 0.0

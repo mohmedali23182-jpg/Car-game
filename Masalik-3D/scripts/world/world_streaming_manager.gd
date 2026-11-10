@@ -30,6 +30,10 @@ func _ready() -> void:
 			shader_material.set_shader_parameter("base_color",m.albedo_color)
 			materials[key]=shader_material
 		else: materials[key] = m
+	var road_mat := ShaderMaterial.new();road_mat.shader=load("res://assets/shaders/asphalt.gdshader");materials.asphalt=road_mat
+	var stone_mat := ShaderMaterial.new();stone_mat.shader=load("res://assets/shaders/masonry.gdshader");materials.stone=stone_mat
+	var white := StandardMaterial3D.new();white.albedo_color=Color("dcd7c7");white.roughness=0.82;materials.white=white
+	var steel := StandardMaterial3D.new();steel.albedo_color=Color("747d80");steel.metallic=0.7;steel.roughness=0.42;materials.steel=steel
 	update_chunks(distance)
 func build_path() -> void:
 	points.clear()
@@ -143,27 +147,48 @@ func build_chunk(id: int) -> Node3D:
 			triangle(terrain,a,b,c); triangle(terrain,b,d,c)
 	var region := region_at(id*CHUNK)
 	mesh_body(root,terrain,materials["sand" if region == 5 else ("green" if region == 0 else "terrain")],"sand" if region == 5 else "dirt")
-	# Center markings and verge stones are instanced with distance culling.
-	var marks: Array[Transform3D] = []
-	for i in range(first+2,end,4):
-		marks.append(Transform3D(basis_at(i*STEP), points[i]+Vector3.UP*0.03))
-	var box := BoxMesh.new(); box.size = Vector3(0.12,0.035,3.0)
-	instances(root,box,materials.gold,marks,450.0)
-	var stones: Array[Transform3D] = []
-	for i in range(first+1,end,4):
+	# Lane geometry follows the same tested centerline, not a stretched generic plane.
+	var marks: Array[Transform3D]=[];var edge_marks: Array[Transform3D]=[]
+	var rails: Array[Transform3D]=[];var posts: Array[Transform3D]=[]
+	for i in range(first,end):
+		if surface_at(i*STEP)!="asphalt": continue
+		var frame := basis_at((i+0.5)*STEP)
+		var midpoint := (points[i]+points[i+1])*0.5
 		for side in [-1.0,1.0]:
-			stones.append(Transform3D(basis_at(i*STEP),points[i]+rights[i]*side*6.3+Vector3.UP*0.3))
-	box = BoxMesh.new(); box.size = Vector3(0.25,0.6,0.4)
-	instances(root,box,materials.stone,stones,300.0)
-	# Local architecture: stacked stone houses, white trim and inset windows.
+			edge_marks.append(Transform3D(frame,midpoint+rights[i]*side*4.9+Vector3.UP*0.025))
+			if region in [0,1] and i%3==0:
+				posts.append(Transform3D(frame,midpoint+rights[i]*side*6.15+Vector3.UP*0.45))
+			if region in [0,1]: rails.append(Transform3D(frame,midpoint+rights[i]*side*6.15+Vector3.UP*0.85))
+		if i%4==0: marks.append(Transform3D(frame,midpoint+Vector3.UP*0.03))
+	var box := BoxMesh.new();box.size=Vector3(0.14,0.025,3.4);instances(root,box,materials.gold,marks,500)
+	box=BoxMesh.new();box.size=Vector3(0.13,0.025,4.15);instances(root,box,materials.white,edge_marks,500)
+	box=BoxMesh.new();box.size=Vector3(0.10,0.24,4.2);instances(root,box,materials.steel,rails,450)
+	if not rails.is_empty():
+		var st := SurfaceTool.new();st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for transform in rails: st.append_from(box,0,transform)
+		var body := StaticBody3D.new();var collision := CollisionShape3D.new();collision.shape=st.commit().create_trimesh_shape();body.add_child(collision);body.set_meta("surface_type","metal");root.add_child(body)
+	box=BoxMesh.new();box.size=Vector3(0.12,0.9,0.12);instances(root,box,materials.steel,posts,450)
+	# Local stone village frontage and white plaster surrounds, aligned toward the road.
 	for i in range(first+15,end,35):
-		var side := -1.0 if i%2 == 0 else 1.0
-		var center := height_point(i,side*24)
-		for floor_id in range(2 + i%3):
-			box_node(root,Vector3(6,2.8,5),center+Vector3(0,1.4+floor_id*2.9,0),materials.stone,true)
-			box_node(root,Vector3(6.1,0.15,5.1),center+Vector3(0,2.8+floor_id*2.9,0),materials.gold,false)
+		var side := -1.0 if i%2==0 else 1.0
+		var village := Node3D.new();root.add_child(village);village.position=height_point(i,side*21);village.basis=basis_at(i*STEP).rotated(Vector3.UP,-side*PI/2)
+		for floor_id in range(2+i%3):
+			var y := floor_id*2.9
+			box_node(village,Vector3(6,2.8,5),Vector3(0,1.4+y,0),materials.stone,true)
+			box_node(village,Vector3(6.12,0.13,5.12),Vector3(0,2.8+y,0),materials.white,false)
 			for wx in [-1.8,0.0,1.8]:
-				box_node(root,Vector3(0.65,1.0,0.08),center+Vector3(wx,1.5+floor_id*2.9,2.55),materials.window,false)
+				box_node(village,Vector3(0.98,1.33,0.09),Vector3(wx,1.5+y,2.56),materials.white,false)
+				box_node(village,Vector3(0.72,1.08,0.10),Vector3(wx,1.5+y,2.62),materials.window,false)
+				box_node(village,Vector3(0.045,1.05,0.13),Vector3(wx,1.5+y,2.68),materials.white,false)
+				box_node(village,Vector3(0.72,0.045,0.13),Vector3(wx,1.7+y,2.68),materials.white,false)
+		box_node(village,Vector3(1.15,2.05,0.14),Vector3(0,1.02,2.67),materials.window,false)
+		if region in [0,3,4]:
+			box_node(village,Vector3(5.6,0.16,1.5),Vector3(0,2.3,3.1),materials.green,false)
+			text_sign(village,["بنّ يمني","ورشة المسالك","بقالة الوادي","استراحة القمم"][i%4],Vector3(0,2.65,2.75),Vector2(4.8,0.6),false)
+	# Arabic directional signs, real-world-style markings and speed boards.
+	var sign_frame := Node3D.new();root.add_child(sign_frame);sign_frame.position=point_at(id*CHUNK+110);sign_frame.basis=basis_at(id*CHUNK+110)
+	text_sign(sign_frame,str(regions[region].nameAr).split(" (")[0]+"  ↑",Vector3(8.5,3.6,0),Vector2(4.4,1.25),true)
+	box_node(sign_frame,Vector3(0.10,3.2,0.10),Vector3(8.5,1.6,0),materials.steel,true)
 	if region == 4:
 		var sea := MeshInstance3D.new();var plane := PlaneMesh.new();plane.size=Vector2(900,900);plane.subdivide_width=24;plane.subdivide_depth=24
 		sea.mesh=plane;sea.position=point_at(id*CHUNK+250)+Vector3(-480,-8,0)
@@ -223,3 +248,8 @@ func box_node(parent: Node3D, size: Vector3, pos: Vector3, mat: Material, collis
 	parent.add_child(mi)
 	if collision: mi.create_trimesh_collision()
 	return mi
+
+func text_sign(parent: Node3D,text: String,pos: Vector3,dimensions: Vector2,green: bool) -> void:
+	var backing := StandardMaterial3D.new();backing.albedo_color=Color("1d4e48") if green else Color("67492f")
+	box_node(parent,Vector3(dimensions.x,dimensions.y,0.10),pos,backing,false)
+	var label := Label3D.new();label.text=text;label.font=load("res://assets/fonts/NotoSansArabic-Regular.ttf");label.font_size=52;label.pixel_size=0.006;label.position=pos+Vector3(0,0,0.065);label.outline_size=0;label.modulate=Color("eae6d6");label.no_depth_test=false;parent.add_child(label)

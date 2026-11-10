@@ -12,6 +12,10 @@ func run() -> void:
 	menu.queue_free();await get_tree().process_frame
 	var game: MasalikSession=load("res://scenes/main/main_game.tscn").instantiate();add_child(game)
 	await get_tree().process_frame
+	for frame in range(120): await get_tree().physics_frame
+	if not game.starting_parked or game.car.current_speed_kmh>2:
+		push_error("Automatic startup parking failed");get_tree().quit(1);return
+	print("UI PASS startup parking and horizon camera")
 	game.pause_menu();await get_tree().process_frame;game.resume();await get_tree().process_frame
 	game.pause_menu();await get_tree().process_frame;game.control_studio();await get_tree().process_frame;game.resume();await get_tree().process_frame
 	game.map_screen();await get_tree().process_frame;game.resume();await get_tree().process_frame

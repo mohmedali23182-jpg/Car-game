@@ -20,15 +20,26 @@ func clear(title: String) -> void:
 	content=MasalikUI.panel(self,title)
 func home() -> void:
 	clear("مَسَالِك  |  دروب اليمن")
-	MasalikUI.label(content,"MASALIK · ROADS OF YEMEN",24)
-	MasalikUI.label(content,"رحلتك تبدأ من الجبال… وتمتد إلى البحر والرمال",24)
-	MasalikUI.button(content,"متابعة الرحلة",func(): launch({}))
-	MasalikUI.button(content,"قيادة حرة — اختر المنطقة",regions_menu)
-	MasalikUI.button(content,"القصة والتحديات والنقل والإنقاذ",func(): missions_menu("story"))
-	MasalikUI.button(content,"الكراج والمركبات",garage)
-	MasalikUI.button(content,"الإعدادات",settings)
-	MasalikUI.button(content,"الإنجازات والاعتمادات",credits)
-	MasalikUI.label(content,"نسخة تطوير أصلية محلية · 1.0.0 · لا تحتاج تسجيل دخول",16)
+	MasalikUI.label(content,"طريقك… حكايتك… من سفح تعز إلى أفق البحر",20)
+	var row := HBoxContainer.new();row.custom_minimum_size.y=360;content.add_child(row)
+	var actions := VBoxContainer.new();actions.custom_minimum_size.x=350;actions.size_flags_horizontal=Control.SIZE_EXPAND_FILL;row.add_child(actions)
+	MasalikUI.button(actions,"متابعة الرحلة  ←",func(): launch({}))
+	MasalikUI.button(actions,"القيادة الحرة · ست مناطق",regions_menu)
+	MasalikUI.button(actions,"حكايات الطريق والتحديات",func(): missions_menu("story"))
+	MasalikUI.button(actions,"الكراج · اختر رفيق الطريق",garage)
+	MasalikUI.button(actions,"إعدادات القيادة والتحكم",settings)
+	MasalikUI.button(actions,"سجل الرحلات والاعتمادات",credits)
+	var preview_holder := SubViewportContainer.new();preview_holder.custom_minimum_size=Vector2(540,360);preview_holder.size_flags_horizontal=Control.SIZE_EXPAND_FILL;preview_holder.stretch=true;row.add_child(preview_holder)
+	preview=SubViewport.new();preview.size=Vector2i(750,440);preview.own_world_3d=true;preview_holder.add_child(preview)
+	var world_root := Node3D.new();preview.add_child(world_root)
+	display_car=VehicleVisual.new();world_root.add_child(display_car);display_car.build(VehicleFleetRegistry.get_spec(selected),PersistenceManager.save_data.vehicle_customizations.get(selected,{}))
+	var cam := Camera3D.new();cam.position=Vector3(4,2.4,5.8);world_root.add_child(cam);cam.look_at(Vector3(0,0.5,0));cam.current=true
+	var light := DirectionalLight3D.new();light.rotation_degrees=Vector3(-35,-30,0);light.light_energy=1.5;world_root.add_child(light)
+	var fill := OmniLight3D.new();fill.position=Vector3(-3,3,-3);fill.omni_range=15;fill.light_color=Color("a9c4cf");fill.light_energy=2;world_root.add_child(fill)
+	var floor_mesh := MeshInstance3D.new();var plane := PlaneMesh.new();plane.size=Vector2(25,25);floor_mesh.mesh=plane;floor_mesh.position.y=-0.96
+	var mat := StandardMaterial3D.new();mat.albedo_color=Color("17232a");mat.roughness=0.7;floor_mesh.material_override=mat;world_root.add_child(floor_mesh)
+	var d: Dictionary=PersistenceManager.save_data
+	MasalikUI.label(content,"%s  ·  المستوى %d  ·  %d عملة  ·  جميع الرحلات محلية" % [str(VehicleFleetRegistry.get_spec(selected).nameAr),1+int(d.xp)/1000,int(d.coins)],18)
 func launch(mission: Dictionary) -> void:
 	PersistenceManager.save_data.selected_vehicle_id=selected
 	PersistenceManager.save_data_atomic()

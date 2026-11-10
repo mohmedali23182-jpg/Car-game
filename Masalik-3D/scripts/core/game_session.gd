@@ -17,6 +17,8 @@ var save_clock := 0.0
 var tow: RigidBody3D
 var tow_attached := false
 var capture_clock := 0.0
+var instruments: DrivingInstruments
+var starting_parked := true
 var mini_map: MasalikMap
 func _ready() -> void:
 	world=MasalikWorld.new();add_child(world)
@@ -68,28 +70,27 @@ func toggle_tow() -> void:
 	else: navigation.text="اقترب من المركبة العالقة وتوقف لربطها"
 func build_hud() -> void:
 	var canvas := CanvasLayer.new();add_child(canvas)
-	hud=Control.new();hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);hud.mouse_filter=Control.MOUSE_FILTER_IGNORE;hud.theme=MasalikUI.theme();hud.process_mode=Node.PROCESS_MODE_ALWAYS;canvas.add_child(hud)
+	hud=Control.new();hud.layout_direction=Control.LAYOUT_DIRECTION_LTR;hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT);hud.mouse_filter=Control.MOUSE_FILTER_IGNORE;hud.theme=MasalikUI.theme();hud.process_mode=Node.PROCESS_MODE_ALWAYS;canvas.add_child(hud)
 	controls=DrivingControls.new();hud.add_child(controls)
-	top=HBoxContainer.new();top.position=Vector2(35,20);hud.add_child(top)
-	MasalikUI.button(top,"☰",pause_menu)
+	top=HBoxContainer.new();top.position=Vector2(32,24);hud.add_child(top)
+	MasalikUI.button(top,"Ⅱ",pause_menu).tooltip_text="توقف مؤقت"
 	MasalikUI.button(top,"كاميرا",func(): camera.cycle_camera_view())
-	MasalikUI.button(top,"استعادة",recover)
 	MasalikUI.button(top,"بوق",func(): audio.horn.play())
-	MasalikUI.button(top,"أنوار",func():
-		for lamp in car.visual.headlights: lamp.visible=not lamp.visible)
-	MasalikUI.button(top,"خريطة",map_screen)
-	MasalikUI.button(top,"تصوير",photo_mode)
-	mini_map=MasalikMap.new();mini_map.world=world;mini_map.car=car;mini_map.position=Vector2(1020,90);mini_map.size=Vector2(220,150);hud.add_child(mini_map)
-	status=Label.new();status.position=Vector2(40,85);status.size=Vector2(960,50);status.text_direction=Control.TEXT_DIRECTION_RTL;status.add_theme_font_size_override("font_size",20);hud.add_child(status)
-	navigation=Label.new();navigation.position=Vector2(40,145);navigation.size=Vector2(1100,85);navigation.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;hud.add_child(navigation)
-	var gears := VBoxContainer.new();gears.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT);gears.position=Vector2(-115,-120);hud.add_child(gears)
-	MasalikUI.button(gears,"D / R",func(): controls.reverse=not controls.reverse)
-	MasalikUI.button(gears,"+",func(): car.automatic=false;car.shift(1))
+	MasalikUI.button(top,"الأدوات",utility_menu)
+	mini_map=MasalikMap.new();mini_map.world=world;mini_map.car=car;mini_map.size=Vector2(190,125);hud.add_child(mini_map)
+	status=Label.new();status.add_theme_font_size_override("font_size",14);status.text_direction=Control.TEXT_DIRECTION_RTL;hud.add_child(status)
+	navigation=Label.new();navigation.size=Vector2(650,75);navigation.add_theme_font_size_override("font_size",18);navigation.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;navigation.text_direction=Control.TEXT_DIRECTION_RTL;hud.add_child(navigation)
+	instruments=DrivingInstruments.new();instruments.car=car;hud.add_child(instruments)
+	var gears := HBoxContainer.new();gears.name="GearControls";hud.add_child(gears)
+	MasalikUI.button(gears,"D / R",func():
+		if car.current_speed_kmh<5: controls.reverse=not controls.reverse
+		else: navigation.text="توقف أولًا قبل تبديل اتجاه الحركة")
 	MasalikUI.button(gears,"−",func(): car.automatic=false;car.shift(-1))
-	MasalikUI.button(gears,"AUTO",func(): car.automatic=not car.automatic)
+	MasalikUI.button(gears,"+",func(): car.automatic=false;car.shift(1))
 	if tow!=null: MasalikUI.button(top,"حبل سحب",toggle_tow)
 func _physics_process(delta: float) -> void:
-	car.set_drive_inputs(controls.throttle,controls.brake,controls.steer,controls.handbrake)
+	if absf(controls.throttle)>0.04: starting_parked=false
+	car.set_drive_inputs(controls.throttle,1.0 if starting_parked else controls.brake,controls.steer,controls.handbrake)
 	car.wet_grip=weather.get_weather_friction_multiplier(car.current_surface)
 	var lateral := car.position.distance_to(world.point_at(world.distance))
 	if missions.running:
@@ -108,7 +109,14 @@ func _physics_process(delta: float) -> void:
 func _process(delta: float) -> void:
 	save_clock+=delta;capture_clock+=delta
 	if save_clock>15: save_clock=0;save_session()
-	status.text="السرعة %03d كم/س  |  الدوران %04d  |  %s غيار %d  |  الوقود %.1f لتر  |  %.0f°  |  السلامة %.0f٪" % [int(car.current_speed_kmh),int(car.rpm),car.drivetrain,car.gear,car.fuel,car.temperature,car.health]
+	var safe := controls.safe_rect()
+	top.position=safe.position+Vector2(4,2)
+	mini_map.position=Vector2(safe.end.x-200,safe.position.y+4)
+	status.position=Vector2(safe.end.x-255,safe.position.y+135);status.size=Vector2(245,36)
+	status.text="وقود %.0f لتر  ·  سلامة %.0f٪" % [car.fuel,car.health]
+	navigation.position=safe.position+Vector2(10,67)
+	instruments.position=Vector2(safe.get_center().x-140,safe.end.y-142)
+	hud.get_node("GearControls").position=Vector2(safe.end.x-236,safe.get_center().y-30)
 	if missions.running:
 		navigation.text=missions.active.titleAr+"\nالمتبقي %.0f م  |  %.0f ثانية  |  الحمولة %.0f%%" % [absf(float(missions.active.finishDistanceM)-world.distance),missions.elapsed,car.cargo_integrity]
 	elif not camera.photo:
@@ -125,15 +133,26 @@ func _notification(what: int) -> void:
 		if not get_tree().paused: pause_menu()
 	if what==NOTIFICATION_WM_GO_BACK_REQUEST and is_instance_valid(car): pause_menu()
 func recover() -> void:
-	car.freeze=true;car.position=world.point_at(world.distance)+Vector3.UP*1.2;car.basis=world.basis_at(world.distance);car.linear_velocity=Vector3.ZERO;car.angular_velocity=Vector3.ZERO;car.freeze=false;controls.reset_input()
+	car.freeze=true;car.position=world.point_at(world.distance)+Vector3.UP*1.2;car.basis=world.basis_at(world.distance);car.linear_velocity=Vector3.ZERO;car.angular_velocity=Vector3.ZERO;car.freeze=false;controls.reset_input();starting_parked=true
 	if missions.running and missions.direction<0: car.basis=car.basis.rotated(Vector3.UP,PI)
 func show_panel(title: String) -> VBoxContainer:
-	controls.reset_input();controls.hide();top.hide();status.hide();navigation.hide();mini_map.hide()
+	controls.reset_input();controls.hide();top.hide();status.hide();navigation.hide();mini_map.hide();instruments.hide();hud.get_node("GearControls").hide()
 	get_tree().paused=true
 	var v := MasalikUI.panel(hud,title);overlay=v.get_parent().get_parent();return v
 func resume() -> void:
 	if is_instance_valid(overlay): overlay.queue_free()
-	controls.editing=false;controls.reset_input();controls.show();top.show();status.show();navigation.show();mini_map.show();get_tree().paused=false;camera.photo=false
+	controls.editing=false;controls.reset_input();controls.show();top.show();status.show();navigation.show();mini_map.show();instruments.show();hud.get_node("GearControls").show();get_tree().paused=false;camera.photo=false
+func utility_menu() -> void:
+	if is_instance_valid(overlay): return
+	var v := show_panel("أدوات الرحلة")
+	MasalikUI.button(v,"خريطة الطريق",func(): resume();map_screen())
+	MasalikUI.button(v,"الأنوار الأمامية",func():
+		for lamp in car.visual.headlights: lamp.visible=not lamp.visible
+		resume())
+	MasalikUI.button(v,"استعادة المركبة على الطريق",func(): recover();resume())
+	MasalikUI.button(v,"التصوير",func(): resume();photo_mode())
+	MasalikUI.button(v,"ناقل الحركة: "+("أوتوماتيكي" if car.automatic else "يدوي"),func(): car.automatic=not car.automatic;resume())
+	MasalikUI.button(v,"متابعة",resume)
 func pause_menu() -> void:
 	if is_instance_valid(overlay): return
 	var v := show_panel("استراحة على الطريق")

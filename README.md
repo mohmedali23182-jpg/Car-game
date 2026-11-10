@@ -57,3 +57,7 @@ Requires matching Godot export templates, Android SDK and Java paths set in Godo
 Clean-install the actual APK, enable airplane mode **before first launch**, visit every region, drive every car and complete all mission categories, save/kill/reopen, background/resume with fingers held, check notch/wide-screen layout, export/import saves, and record at least 30 minutes of FPS/memory/crashes on identified devices. These are manual gates, not inferred from the absence of network code.
 
 Browser reference commands remain `npm run dev`, `npm run build`, `npm run lint`; dependency installation and browser runtime were not part of native acceptance. No browser source was deleted.
+
+## Driving experience refresh
+
+The next test build replaces the initial box-like car visuals and bare-road HUD with beveled regional vehicle families, cabin details, locally shaded asphalt/masonry, Arabic roadside signs, collidable guardrails, horizon-oriented chase cameras, native instruments and progressive pedals. See [implementation and limits](Masalik-3D/docs/DRIVING_EXPERIENCE_REFRESH.md). All previous local saves and controls remain compatible.

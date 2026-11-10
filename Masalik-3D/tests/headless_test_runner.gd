@@ -93,8 +93,22 @@ func run() -> void:
 	var drag := InputEventScreenDrag.new();drag.index=0;drag.position=wheel.position+Vector2(0,50);controls._input(drag);controls._process(0.016)
 	check(controls.steer>0 and controls.throttle>0,"multi-touch steering and throttle together")
 	controls.reset_input();check(controls.pointers.is_empty() and controls.throttle==0,"focus-loss input reset")
+	for resolution in [Vector2(1280,720),Vector2(1560,720),Vector2(1920,720)]:
+		controls.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT);controls.size=resolution
+		for key in ["gas","brake","wheel","hand"]:
+			check(controls.safe_rect().encloses(controls.rect_for(key)),"safe control bounds "+str(resolution)+" "+key)
+	controls.size=Vector2(1280,720)
+	var gas_down := InputEventScreenTouch.new();gas_down.index=4;gas_down.pressed=true;gas_down.position=controls.rect_for("gas").get_center();controls._input(gas_down);controls._process(0.5)
+	var middle_pressure := controls.throttle
+	var pedal_drag := InputEventScreenDrag.new();pedal_drag.index=4;pedal_drag.position=controls.rect_for("gas").position+Vector2(20,1);controls._input(pedal_drag);controls._process(0.5)
+	check(controls.throttle>middle_pressure and controls.throttle<=1.0,"pedal pressure is gradual instead of binary")
+	controls.reset_input()
+	var wrap_touch := InputEventScreenTouch.new();wrap_touch.index=5;wrap_touch.pressed=true;wrap_touch.position=controls.rect_for("wheel").get_center()+Vector2(-60,0.1);controls._input(wrap_touch)
+	var wrap_drag := InputEventScreenDrag.new();wrap_drag.index=5;wrap_drag.position=controls.rect_for("wheel").get_center()+Vector2(-60,-0.1);controls._input(wrap_drag)
+	check(absf(controls.wheel_angle)<0.05,"wheel crosses angle boundary without jumping")
+	controls.reset_input()
 	for id in registry.specs:
-		var visual := VehicleVisual.new();root.add_child(visual);visual.build(registry.get_spec(id));check(visual.wheels.size()==4,"renderable wheel rig "+str(id));visual.queue_free()
+		var visual := VehicleVisual.new();root.add_child(visual);visual.build(registry.get_spec(id));check(visual.wheels.size()==4,"renderable wheel rig "+str(id));check(visual.get_child_count()<35,"batched static vehicle geometry "+str(id));visual.queue_free()
 	for resource in ["engine","horn","music","impact","tires","wind"]: check(load("res://assets/audio/"+resource+".wav")!=null,"bundled audio "+resource)
 	controls.queue_free();car.queue_free();ground.queue_free();missions.queue_free();world.queue_free()
 	await get_tree().process_frame;await get_tree().process_frame
