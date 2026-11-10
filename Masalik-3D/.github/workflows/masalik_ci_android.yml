@@ -1,0 +1,61 @@
+name: MASALIK 3D — Headless Validation & Android APK Build (v0.2.0-alpha)
+
+on:
+  push:
+    branches: [ main, "feat/**" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.7.2"
+  RELEASE_NAME: "MASALIK-v0.2.0-alpha-arm64"
+
+jobs:
+  validate-and-export-apk:
+    name: Validate GDScript & Build ARM64 APK
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17 & Android SDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Godot 4.7.2 Headless & Export Templates
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+          include-templates: true
+
+      - name: Verify Project Structure & Scripts
+        run: |
+          test -f Masalik-3D/project.godot
+          test -f Masalik-3D/scripts/vehicles/masalik_vehicle_controller.gd
+          test -f Masalik-3D/scripts/vehicles/vehicle_fleet_registry.gd
+          test -f Masalik-3D/scripts/world/yemeni_mountain_world.gd
+          test -f Masalik-3D/scripts/world/world_streaming_manager.gd
+          test -f Masalik-3D/scripts/world/time_and_weather_system.gd
+          test -f Masalik-3D/scripts/world/traffic_ai_manager.gd
+          godot --headless --path Masalik-3D --quit
+
+      - name: Export Android ARM64 Debug APK
+        run: |
+          mkdir -p build/android
+          godot --headless --path Masalik-3D --export-debug "Android ARM64" ../build/android/${RELEASE_NAME}.apk
+          sha256sum build/android/${RELEASE_NAME}.apk > build/android/${RELEASE_NAME}.apk.sha256
+          ls -lh build/android/
+
+      - name: Upload Android APK & SHA256 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.RELEASE_NAME }}-apk
+          path: |
+            build/android/${RELEASE_NAME}.apk
+            build/android/${RELEASE_NAME}.apk.sha256
+          retention-days: 30

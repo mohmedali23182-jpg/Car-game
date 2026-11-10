@@ -1,0 +1,50 @@
+; Engine configuration file.
+; Generated for MASALIK — Roads of Yemen (مَسَالِك — دروب اليمن)
+; Developer: معتز العلقمي – تعز – اليمن – 2026م
+
+config_version=5
+
+[application]
+
+config/name="مَسَالِك — دروب اليمن | MASALIK"
+config/description="3D Open-World Yemeni Driving & Off-Road Simulation (Phase 2 — v0.2.0-alpha)"
+config/version="0.2.0-alpha"
+run/main_scene="res://scenes/main/MainMenu.tscn"
+config/features=PackedStringArray("4.7", "Jolt Physics", "Mobile")
+boot_splash/bg_color=Color(0.0509804, 0.0431373, 0.0352941, 1)
+config/icon="res://icon.svg"
+
+[autoload]
+
+PersistenceManager="*res://scripts/persistence/persistence_manager.gd"
+QualityManager="*res://scripts/core/quality_manager.gd"
+VehicleFleetRegistry="*res://scripts/vehicles/vehicle_fleet_registry.gd"
+TelemetryLogger="*res://scripts/diagnostics/telemetry_logger.gd"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
+
+[input_devices]
+
+pointing/emulate_touch_from_mouse=true
+
+[physics]
+
+3d/physics_engine="JoltPhysics3D"
+3d/default_gravity=9.81
+common/physics_ticks_per_second=60
+jolt_3d/simulation/velocity_steps=10
+jolt_3d/simulation/position_steps=2
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
+textures/vram_compression/import_etc2_astc=true
+anti_aliasing/quality/msaa_3d=1
+lights_and_shadows/directional_shadow/size=2048

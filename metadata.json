@@ -1,0 +1,6 @@
+{
+  "name": "MASALIK — مَسَالِك | دروب اليمن",
+  "description": "محاكاة قيادة جبلية ثلاثية الأبعاد عبر مرتفعات ودروب اليمن — 3D Mountain Driving & Off-road Simulation (طريق القمم)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

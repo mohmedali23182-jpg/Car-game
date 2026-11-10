@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1b2a" />
+      <stop offset="55%" stop-color="#1b263b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#sky)" />
+  <!-- Sun / Qamariya Arch -->
+  <circle cx="256" cy="195" r="88" fill="url(#gold)" opacity="0.88" />
+  <!-- Yemeni Mountain Peaks -->
+  <polygon points="48,370 175,210 295,370" fill="#1e293b" />
+  <polygon points="185,370 325,180 464,370" fill="#0f172a" />
+  <!-- Winding Mountain Road -->
+  <path d="M 190 464 Q 290 390 245 335 Q 205 290 275 245" fill="none" stroke="#f59e0b" stroke-width="26" stroke-linecap="round" />
+  <path d="M 190 464 Q 290 390 245 335 Q 205 290 275 245" fill="none" stroke="#fffbeb" stroke-width="4" stroke-dasharray="12 12" stroke-linecap="round" />
+  <!-- Arabic Letter Meem / Emblem -->
+  <rect x="36" y="36" width="440" height="440" rx="88" fill="none" stroke="url(#gold)" stroke-width="8" opacity="0.45" />
+</svg>
