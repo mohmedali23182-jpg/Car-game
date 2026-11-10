@@ -44,7 +44,7 @@ Physics frames really run under Jolt; no tests advance the player by assigning i
 
 ## Android build
 
-Package `com.moataz.masalik`, version `1.0.0`, code `10001` (previous tracked code was 2), minimum API 26, ARM64 only, landscape. The workflow in root `.github/workflows/masalik_ci_android.yml` installs Java 17, Android API/build-tools 35, Godot/templates 4.6.3, generates local audio, imports, tests, exports, checks APK signature/manifest/ABI, rejects INTERNET permission and produces SHA256.
+Package `com.moataz.masalik`, version `1.0.0`, local default code `10001`, increasing CI code `10000 + run_number` (previous tracked code was 2), minimum API 26, ARM64 only, landscape. The workflow in root `.github/workflows/masalik_ci_android.yml` installs Java 17, Android API/build-tools 35, Godot/templates 4.6.3, generates local audio, imports, tests, exports, checks APK signature/manifest/ABI, rejects INTERNET permission and produces SHA256.
 
 ```bash
 godot --headless --path Masalik-3D --install-android-build-template --export-debug 'Android ARM64' ../build/android/MASALIK-1.0.0-dev-arm64.apk

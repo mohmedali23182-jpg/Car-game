@@ -70,10 +70,11 @@ func _physics_process(delta: float) -> void:
 	var speed := linear_velocity.dot(forward)
 	current_speed_kmh = linear_velocity.length()*3.6
 	shift_cooldown=maxf(0,shift_cooldown-delta)
+	if throttle_input<0: gear=1
 	var ratio := lerpf(3.6,0.75,float(gear-1)/maxf(1,float(spec.forwardGearsCount)-1))
 	var low := 2.5 if drivetrain=="4L" else 1.0
 	rpm=clampf(absf(speed)/wheel_radius*ratio*3.7*low*60/TAU+float(spec.idleRpm)*absf(throttle_input),float(spec.idleRpm),float(spec.redlineRpm))
-	if automatic and shift_cooldown<=0:
+	if automatic and shift_cooldown<=0 and throttle_input>=0:
 		if rpm>float(spec.redlineRpm)*0.82 and gear<int(spec.forwardGearsCount): shift(1)
 		elif rpm<float(spec.redlineRpm)*0.28 and gear>1: shift(-1)
 	var steer_limit := float(spec.maxSteerAngleRad)/(1.0+absf(speed)*0.018)

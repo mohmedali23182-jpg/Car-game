@@ -41,6 +41,13 @@ func run() -> void:
 		for frame in range(120): await get_tree().physics_frame
 		check(road_car.grounded>=3,"native road supports wheels at "+str(s))
 		check(road_car.position.y>world.point_at(s).y-2,"no fall through generated terrain at "+str(s))
+		for side in [-1.0,1.0]:
+			var test_point: Vector3=world.point_at(s)+world.basis_at(s).x*side*4.0
+			var ray := PhysicsRayQueryParameters3D.create(test_point+Vector3.UP*10,test_point-Vector3.UP*10)
+			ray.exclude=[road_car.get_rid()]
+			var hit := world.get_world_3d().direct_space_state.intersect_ray(ray)
+			if not hit.is_empty(): print("EDGE ",s," side=",side," surface=",hit.collider.get_meta("surface_type","")," delta_y=",hit.position.y-test_point.y)
+			check(not hit.is_empty() and hit.collider.get_meta("surface_type","")==world.surface_at(s),"road edges remain uncovered at "+str(s)+" side "+str(side))
 		road_car.queue_free();await get_tree().process_frame
 	var store := root.get_node("PersistenceManager")
 	var before: Dictionary=store.save_data.duplicate(true)

@@ -20,6 +20,17 @@ func read_valid(path: String) -> Dictionary:
 	for key in ["coins", "xp", "distance", "fuel", "health", "quality", "control_scheme"]:
 		if v.has(key) and typeof(v[key]) not in [TYPE_INT, TYPE_FLOAT]: return {}
 	if v.has("unlocked") and not v.unlocked is Array: return {}
+	for layout in v.get("layouts",{}).values():
+		if not layout is Dictionary: return {}
+		for item in layout.values():
+			if not item is Array or item.size()!=5: return {}
+			for i in range(4):
+				if typeof(item[i]) not in [TYPE_INT,TYPE_FLOAT]: return {}
+			if not item[4] is bool: return {}
+	for custom in v.get("vehicle_customizations",{}).values():
+		if not custom is Dictionary: return {}
+		for key in ["height","cargo","power"]:
+			if custom.has(key) and typeof(custom[key]) not in [TYPE_INT,TYPE_FLOAT]: return {}
 	return v
 func migrate(data: Dictionary) -> Dictionary:
 	var out := defaults()

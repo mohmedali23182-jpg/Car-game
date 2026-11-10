@@ -44,6 +44,11 @@ jobs:
           XDG_DATA_HOME=/tmp/masalik-test timeout 120 godot --headless --path Masalik-3D --fixed-fps 60 res://tests/headless_test_runner.tscn 2>&1 | tee build/tests.log
           grep 'failures=0' build/tests.log
           ! grep -E 'SCRIPT ERROR|^ERROR:' build/tests.log
+      - name: Continuous real-physics route drive
+        run: |
+          XDG_DATA_HOME=/tmp/masalik-drive timeout 180 godot --headless --path Masalik-3D --fixed-fps 60 res://tests/road_drive.tscn 2>&1 | tee build/road-drive.log
+          grep 'ROAD_DRIVE PASS' build/road-drive.log
+          ! grep -E 'SCRIPT ERROR|^ERROR:' build/road-drive.log
       - name: Native UI smoke test
         run: |
           XDG_DATA_HOME=/tmp/masalik-ui timeout 120 godot --headless --path Masalik-3D --fixed-fps 60 res://tests/ui_smoke.tscn 2>&1 | tee build/ui-tests.log
@@ -66,6 +71,8 @@ jobs:
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           SETTINGS
+      - name: Set increasing test build version code
+        run: python3 Masalik-3D/tools/set_android_version.py "$((10000 + GITHUB_RUN_NUMBER))"
       - name: Export native ARM64 test APK
         run: |
           godot --headless --path Masalik-3D --install-android-build-template --export-debug 'Android ARM64' ../build/android/MASALIK-1.0.0-dev-arm64.apk 2>&1 | tee build/export.log

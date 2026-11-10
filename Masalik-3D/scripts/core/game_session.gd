@@ -80,7 +80,7 @@ func build_hud() -> void:
 	MasalikUI.button(top,"خريطة",map_screen)
 	MasalikUI.button(top,"تصوير",photo_mode)
 	mini_map=MasalikMap.new();mini_map.world=world;mini_map.car=car;mini_map.position=Vector2(1020,90);mini_map.size=Vector2(220,150);hud.add_child(mini_map)
-	status=Label.new();status.position=Vector2(40,85);status.add_theme_font_size_override("font_size",22);hud.add_child(status)
+	status=Label.new();status.position=Vector2(40,85);status.size=Vector2(960,50);status.text_direction=Control.TEXT_DIRECTION_RTL;status.add_theme_font_size_override("font_size",20);hud.add_child(status)
 	navigation=Label.new();navigation.position=Vector2(40,145);navigation.size=Vector2(1100,85);navigation.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;hud.add_child(navigation)
 	var gears := VBoxContainer.new();gears.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT);gears.position=Vector2(-115,-120);hud.add_child(gears)
 	MasalikUI.button(gears,"D / R",func(): controls.reverse=not controls.reverse)
@@ -108,7 +108,7 @@ func _physics_process(delta: float) -> void:
 func _process(delta: float) -> void:
 	save_clock+=delta;capture_clock+=delta
 	if save_clock>15: save_clock=0;save_session()
-	status.text="%03d km/h  |  %04d RPM  |  %s %d  |  %.1f L  |  %.0f°C  |  سلامة %.0f%%" % [int(car.current_speed_kmh),int(car.rpm),car.drivetrain,car.gear,car.fuel,car.temperature,car.health]
+	status.text="السرعة %03d كم/س  |  الدوران %04d  |  %s غيار %d  |  الوقود %.1f لتر  |  %.0f°  |  السلامة %.0f٪" % [int(car.current_speed_kmh),int(car.rpm),car.drivetrain,car.gear,car.fuel,car.temperature,car.health]
 	if missions.running:
 		navigation.text=missions.active.titleAr+"\nالمتبقي %.0f م  |  %.0f ثانية  |  الحمولة %.0f%%" % [absf(float(missions.active.finishDistanceM)-world.distance),missions.elapsed,car.cargo_integrity]
 	elif not camera.photo:
@@ -126,6 +126,7 @@ func _notification(what: int) -> void:
 	if what==NOTIFICATION_WM_GO_BACK_REQUEST and is_instance_valid(car): pause_menu()
 func recover() -> void:
 	car.freeze=true;car.position=world.point_at(world.distance)+Vector3.UP*1.2;car.basis=world.basis_at(world.distance);car.linear_velocity=Vector3.ZERO;car.angular_velocity=Vector3.ZERO;car.freeze=false;controls.reset_input()
+	if missions.running and missions.direction<0: car.basis=car.basis.rotated(Vector3.UP,PI)
 func show_panel(title: String) -> VBoxContainer:
 	controls.reset_input();controls.hide();top.hide();status.hide();navigation.hide();mini_map.hide()
 	get_tree().paused=true

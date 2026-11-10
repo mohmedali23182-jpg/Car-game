@@ -22,7 +22,7 @@ func _ready() -> void:
 	build_path()
 	for key in ["asphalt", "mud", "sand", "terrain", "stone", "window", "green", "gold", "sea"]:
 		var m := StandardMaterial3D.new()
-		m.albedo_color = {"asphalt": Color("42464a"), "mud": Color("735a3e"), "sand": Color("c6a572"), "terrain": Color("877654"), "stone": Color("9a8064"), "window": Color("223642"), "green": Color("667948"), "gold": Color("e9c475"), "sea": Color("277e92")}[key]
+		m.albedo_color = {"asphalt": Color("42464a"), "mud": Color("735a3e"), "sand": Color("c6a572"), "terrain": Color("877654"), "stone": Color("9a8064"), "window": Color("223642"), "green": Color("485a35"), "gold": Color("e9c475"), "sea": Color("277e92")}[key]
 		m.roughness = 0.9
 		if key in ["terrain", "sand", "green"]:
 			var shader_material := ShaderMaterial.new()
@@ -118,18 +118,24 @@ func build_chunk(id: int) -> Node3D:
 	add_child(root)
 	var first := int(id*CHUNK/STEP)
 	var end := int((id+1)*CHUNK/STEP)
-	var road := SurfaceTool.new()
-	road.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var roads: Dictionary={}
 	for i in range(first, end):
+		var surface := surface_at(i*STEP)
+		if not roads.has(surface):
+			var tool := SurfaceTool.new();tool.begin(Mesh.PRIMITIVE_TRIANGLES);roads[surface]=tool
+		var road: SurfaceTool=roads[surface]
 		var a := points[i]-rights[i]*5.5
 		var b := points[i]+rights[i]*5.5
 		var c := points[i+1]-rights[i+1]*5.5
 		var d := points[i+1]+rights[i+1]*5.5
 		triangle(road, a,b,c); triangle(road,b,d,c)
-	mesh_body(root, road, materials[surface_at(id*CHUNK)], surface_at(id*CHUNK))
+	for surface in roads: mesh_body(root,roads[surface],materials[surface],surface)
 	var terrain := SurfaceTool.new()
 	terrain.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var offsets := [-700.0,-300.0,-120.0,-45.0,-12.0,0.0,12.0,45.0,120.0,300.0,700.0]
+	var offsets: Array[float]=[]
+	for lateral in range(-700,701,25): offsets.append(float(lateral))
+	offsets.append_array([-12.0,-8.0,-5.5,5.5,8.0,12.0])
+	offsets.sort()
 	for i in range(first, end, 5):
 		for j in range(offsets.size()-1):
 			var a := height_point(i, offsets[j]); var b := height_point(i, offsets[j+1])

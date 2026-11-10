@@ -2,7 +2,7 @@
 
 ## Executed locally
 
-Godot 4.6.3.stable.official.7d41c59c4, Linux headless, Jolt, fixed physics timestep 60 Hz. **153 checks, zero failures.** Test source: `tests/headless_test_runner.gd` and scene. Full native UI smoke scene also completes without script errors.
+Godot 4.6.3.stable.official.7d41c59c4, Linux headless, Jolt, fixed physics timestep 60 Hz. **167 checks, zero failures.** Test source: `tests/headless_test_runner.gd` and scene. Full native UI smoke scene also completes without script errors.
 
 Checks cover script compilation, ten original vehicle specs, five chapter / 25 story / 65 overall mission records, map endpoints, actual Curve3D length >=15 km, sector load/unload bounds across all six regions, real rigidbody suspension/acceleration/RPM/braking/reverse, drivetrain selection, independent touch pointers, simultaneous steering/gas, input reset, atomic save/recovery/migration/import rejection, nonduplicated rewards, ten visible wheel rigs and bundled audio loads.
 
@@ -14,7 +14,7 @@ UI smoke instantiates native region menus, garage, settings, credits, all missio
 |---|---|
 | Native engine/startup | Repaired and boots; no WebView |
 | Offline runtime | Local code/resources only; Android manifest verification in CI; physical airplane-mode first launch pending |
-| 15 km connected map | Measured continuous centerline and streamed collidable road/terrain; not driven end-to-end on device |
+| 15 km connected map | Measured continuous centerline and streamed collidable road/terrain; 14.86 km traversed continuously by a force-driven automated car in Jolt; device traversal pending |
 | Six regions | Native sectors with environment variants; artistic fidelity still an early procedural style |
 | Ten cars | Original full spec catalog and parameterized local visible meshes; production-quality interior/exterior art remains incomplete |
 | Physics | Real Jolt rigidbody suspension and contact forces tested on flat ground; slope/surface long-driving acceptance pending |
@@ -33,4 +33,8 @@ No synthetic FPS claims, no claimed physical phone test, no claimed final 1.0 ac
 
 ## Visual regression found and repaired
 
-The first CI APK (593a989) rendered the car falling below the map: road/terrain triangles were wound backward. The flat-ground physics unit checks had not covered the actual road. That artifact is not a release candidate. Reversed triangle winding and added seven actual-road suspension/nonpenetration checks spanning all six regions. All fourteen additional assertions now pass. Subsequent CI must rebuild the corrected source and capture fresh visual evidence.
+The first CI APK (593a989) rendered the car falling below the map: road/terrain triangles were wound backward. The flat-ground physics unit checks had not covered the actual road. That artifact is not a release candidate. Reversed triangle winding and added seven actual-road suspension/nonpenetration checks spanning all six regions. All fourteen additional assertions, plus fourteen road-edge clearance checks now pass. Subsequent CI must rebuild the corrected source and capture fresh visual evidence.
+
+## Continuous real-physics driving test
+
+`tests/road_drive.tscn`: an automated steering/throttle controller drove from s=40 m to s=14900 m through every region using only the actual raycast rigidbody inputs, without teleporting or restoring the vehicle. Passed in 904.43 seconds of simulated physics time, chassis health 100%, no fall-through; intermediate checkpoints at each kilometer recorded. Fixed-fps headless acceleration means this is not a measured 15-minute real-time GPU or phone test.

@@ -36,3 +36,8 @@ func _process(_delta: float) -> void:
 	engine.volume_db=-10+absf(car.throttle_input)*7
 	tires.volume_db=-45+minf(car.current_speed_kmh,80)*0.35
 	if car.current_surface!="asphalt": tires.volume_db+=5
+func _exit_tree() -> void:
+	for player in [engine,tires,horn,impact,wind,music]:
+		if is_instance_valid(player):
+			player.stop()
+			player.stream=null

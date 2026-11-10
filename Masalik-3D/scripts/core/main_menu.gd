@@ -6,6 +6,7 @@ var selected := "shahiq"
 var angle := 0.0
 var catalog: Dictionary
 var root_panel: PanelContainer
+var rotate_preview := true
 func _ready() -> void:
 	theme=MasalikUI.theme()
 	layout_direction=Control.LAYOUT_DIRECTION_RTL
@@ -76,6 +77,9 @@ func garage() -> void:
 	var spec: Dictionary=VehicleFleetRegistry.get_spec(selected)
 	MasalikUI.label(content,spec.titleAr+" · "+str(spec.baseMassKg)+" كجم",24)
 	var container := SubViewportContainer.new();container.custom_minimum_size=Vector2(700,270);container.stretch=true;content.add_child(container)
+	container.gui_input.connect(func(event: InputEvent):
+		if event is InputEventScreenDrag: display_car.rotation.y+=event.relative.x*0.01;rotate_preview=false
+		if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT): display_car.rotation.y+=event.relative.x*0.01;rotate_preview=false)
 	preview=SubViewport.new();preview.size=Vector2i(1000,300);preview.own_world_3d=true;container.add_child(preview)
 	var root := Node3D.new();preview.add_child(root)
 	display_car=VehicleVisual.new();root.add_child(display_car)
@@ -91,6 +95,7 @@ func garage() -> void:
 	var rim := ColorPickerButton.new();rim.text="الجنوط";rim.color=Color(custom.get("rim","c6c3b9"));paint_row.add_child(rim)
 	rim.color_changed.connect(func(c: Color): set_custom("rim",c.to_html()))
 	MasalikUI.slider(content,"ارتفاع التعليق",float(custom.get("height",0)), -0.08,0.18,func(v: float): set_custom("height",v))
+	var roof := CheckButton.new();roof.text="حامل أمتعة السقف";roof.button_pressed=bool(custom.get("roof",false));content.add_child(roof);roof.toggled.connect(func(on: bool): set_custom("roof",on);garage())
 	var tires := OptionButton.new();content.add_child(tires)
 	for name in ["all_terrain","mud_rock","sand_dune","highway_sport"]: tires.add_item(name)
 	tires.item_selected.connect(func(i: int): set_custom("tire",tires.get_item_text(i)))
@@ -144,4 +149,4 @@ func credits() -> void:
 	MasalikUI.label(content,"Godot Engine · Noto Sans Arabic (SIL OFL)\nالمجسمات الإجرائية والمقطوعة والأصوات مصنوعة محليًا. نسخة تطوير قيد التحقق على Android.")
 	MasalikUI.button(content,"رجوع",home)
 func _process(delta: float) -> void:
-	if is_instance_valid(display_car): display_car.rotation.y+=delta*0.35
+	if is_instance_valid(display_car) and rotate_preview: display_car.rotation.y+=delta*0.35
