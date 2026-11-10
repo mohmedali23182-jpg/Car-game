@@ -23,6 +23,18 @@ func run() -> void:
 		if m.category=="story": count+=1
 		check(float(m.startDistanceM)>=0 and float(m.finishDistanceM)<=15000,"mission within world: "+str(m.id))
 	check(count==25,"25 original story missions; 65 total missions retained")
+	var weather := MasalikWeather.new();root.add_child(weather);weather.set_process(false)
+	weather.hour=12;weather._process(0)
+	var midday_sky := weather.sky_material.sky_top_color.get_luminance()
+	var clear_density := weather.environment.fog_density
+	weather.hour=0;weather._process(0)
+	check(weather.sky_material.sky_top_color.get_luminance()<midday_sky*0.2,"night sky darkens with the lighting")
+	check(weather.sun.light_energy==0,"sunlight is absent below the horizon")
+	weather.hour=12;weather.current_weather_preset="dense_fog";weather._process(0)
+	check(weather.environment.fog_density>clear_density*10,"dense fog reduces visibility relative to clear weather")
+	weather.current_weather_preset="heavy_rain";weather._process(0)
+	check(weather.rain.emitting and weather.get_weather_friction_multiplier("asphalt")<1,"rain changes particles and road traction")
+	weather.queue_free()
 	var world := MasalikWorld.new();root.add_child(world)
 	check(world.points.size()==3751,"15 km road sampled every four horizontal meters")
 	check(world.curve.get_baked_length()>=15000,"measured drivable centerline >= 15 km")

@@ -23,4 +23,8 @@ func run() -> void:
 	if absf(game.world.distance-160)>12: push_error("Visual capture teleport regression");get_tree().quit(1);return
 	game.camera.current_view=5;game.camera.orbit=Vector2(-1.0,0.40);game.camera.orbit_distance=15
 	await get_tree().create_timer(1.0).timeout;await capture("service-plaza")
+	game.weather.hour=0
+	await get_tree().create_timer(0.8).timeout;await capture("night")
+	game.weather.hour=17.6
+	await get_tree().create_timer(0.8).timeout;await capture("sunset")
 	print("VISUAL_CAPTURE_PASS");get_tree().quit()

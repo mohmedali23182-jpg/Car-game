@@ -44,3 +44,7 @@ Final regression repairs route vehicle recovery through PhysicsDirectBodyState3D
 The carriageway is now 7.2 m wide with graded, collidable 0.9 m dirt shoulders. Edge markings and guardrails follow the same width. Player spawn/recovery and opposing traffic use the right-hand lane, including reverse-direction missions. Traffic sensing includes speed-dependent braking distance and gradually reduces target speed behind obstacles.
 
 Local verification: 210 assertions and UI integration passed, including right-hand lane placement and an approaching NPC stopping behind the parked player. The CI full-route drive and rendered evidence gate Android publication. Physical-device acceptance remains pending.
+
+## Day/night atmosphere follow-up
+
+Sky, horizon, ground and fog now interpolate with solar elevation, with warm sunset light and a dark night sky. Overcast and sandstorm presets affect the sky palette and direct sunlight; fog presets have distinct visibility densities. CI captures night and sunset frames alongside daytime evidence. Four additional integration checks cover night darkness, absent nighttime sunlight, dense-fog visibility and rain/traction coupling. The narrower-road full drive passed locally over 14.86 km.

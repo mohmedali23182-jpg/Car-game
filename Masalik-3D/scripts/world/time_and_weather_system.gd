@@ -4,6 +4,7 @@ var current_weather_preset := "clear"
 var hour := 8.0
 var sun: DirectionalLight3D
 var environment: Environment
+var sky_material: ProceduralSkyMaterial
 var rain: CPUParticles3D
 var follow: Node3D
 func _ready() -> void:
@@ -12,7 +13,7 @@ func _ready() -> void:
 	environment.background_mode=Environment.BG_SKY
 	var sky := Sky.new();var mat := ProceduralSkyMaterial.new()
 	mat.sky_top_color=Color("356381");mat.sky_horizon_color=Color("c9b59b");mat.ground_horizon_color=Color("ad9877");mat.ground_bottom_color=Color("544b3e")
-	sky.sky_material=mat;environment.sky=sky
+	sky_material=mat;sky.sky_material=mat;environment.sky=sky
 	environment.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR;environment.ambient_light_color=Color("a2b4bb");environment.ambient_light_energy=0.65
 	environment.tonemap_mode=Environment.TONE_MAPPER_FILMIC
 	world.environment=environment;add_child(world)
@@ -26,13 +27,32 @@ func get_weather_friction_multiplier(surface: String) -> float:
 func _process(delta: float) -> void:
 	hour=fmod(hour+delta/180.0,24)
 	sun.rotation_degrees=Vector3(-sin((hour-6)/24*TAU)*80,-35,0)
-	var daylight := clampf(sin((hour-6)/24*TAU),0.05,1)
-	sun.light_energy=daylight*1.2
-	sun.light_color=Color("ffd5a2") if hour<7 or hour>17 else Color("ffefd5")
-	environment.ambient_light_energy=0.12+daylight*0.5
-	var foggy: bool=current_weather_preset in ["fog","dense_fog","sandstorm","heavy_rain"]
-	environment.fog_enabled=foggy
-	environment.fog_density=0.012 if foggy else 0.001
-	environment.fog_light_color=Color("ac9473") if current_weather_preset=="sandstorm" else Color("a2b6bd")
+	var elevation := sin((hour-6)/24*TAU)
+	var daylight := smoothstep(-0.12,0.35,elevation)
+	var twilight := (1.0-smoothstep(0.0,0.4,absf(elevation)))*daylight
+	var overcast := current_weather_preset in ["cloudy","fog","dense_fog","rain","heavy_rain"]
+	var sandstorm := current_weather_preset=="sandstorm"
+	var attenuation := 0.45 if overcast or sandstorm else 1.0
+	sun.light_energy=maxf(0,elevation)*1.2*attenuation
+	sun.light_color=Color("ffefd5").lerp(Color("ffad68"),twilight)
+	environment.ambient_light_energy=0.12+daylight*0.5*attenuation
+	var top := Color("356381")
+	var horizon := Color("c9b59b").lerp(Color("d99164"),twilight)
+	if overcast:
+		top=top.lerp(Color("717d86"),0.75);horizon=horizon.lerp(Color("a0abb0"),0.8)
+	if sandstorm: top=Color("857354");horizon=Color("ac9473")
+	sky_material.sky_top_color=Color("050b1c").lerp(top,daylight)
+	sky_material.sky_horizon_color=Color("162038").lerp(horizon,daylight)
+	sky_material.ground_horizon_color=sky_material.sky_horizon_color
+	sky_material.ground_bottom_color=Color("080b12").lerp(Color("544b3e"),daylight)
+	# Subtle clear-weather aerial perspective also softens the local streaming horizon.
+	environment.fog_enabled=true
+	environment.fog_density=0.0007
+	match current_weather_preset:
+		"fog": environment.fog_density=0.006
+		"dense_fog": environment.fog_density=0.018
+		"sandstorm": environment.fog_density=0.012
+		"heavy_rain": environment.fog_density=0.005
+	environment.fog_light_color=sky_material.sky_horizon_color
 	rain.emitting="rain" in current_weather_preset
 	if is_instance_valid(follow): rain.global_position=follow.global_position+Vector3.UP*10
