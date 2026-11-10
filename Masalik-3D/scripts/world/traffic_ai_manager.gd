@@ -26,18 +26,21 @@ func _physics_process(delta: float) -> void:
 		var dir := 1.0 if i%2==0 else -1.0
 		if distances[i]<0 or absf(distances[i]-world.distance)>350 or distances[i]<10 or distances[i]>14990:
 			distances[i]=clampf(world.distance+70+i*32,10,14990)
-			car.position=world.point_at(distances[i])+world.basis_at(distances[i]).x*(-2.6*dir)+Vector3.UP*0.9
+			car.position=world.point_at(distances[i])+world.basis_at(distances[i]).x*(world.ROAD_HALF_WIDTH*0.5*dir)+Vector3.UP*0.9
 		var future := world.basis_at(distances[i]+dir*20)
 		var current := world.basis_at(distances[i])
 		var curve_slow := absf(future.z.signed_angle_to(current.z,Vector3.UP))
 		var target_speed := 14.0/(1+curve_slow*8)
 		var ahead := -current.z*dir
-		var query := PhysicsRayQueryParameters3D.create(car.global_position+Vector3.UP*0.5,car.global_position+Vector3.UP*0.5+ahead*18)
+		var query := PhysicsRayQueryParameters3D.create(car.global_position+Vector3.UP*0.5,car.global_position+Vector3.UP*0.5+ahead*maxf(18,speeds[i]*1.2+speeds[i]*speeds[i]/8.0))
 		query.collision_mask=3;query.exclude=[car.get_rid()]
-		if not get_world_3d().direct_space_state.intersect_ray(query).is_empty(): target_speed=0
+		var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		if not hit.is_empty():
+			var gap := car.global_position.distance_to(hit.position)
+			target_speed=minf(target_speed,sqrt(maxf(0,8.0*(gap-6.0))))
 		speeds[i]=move_toward(speeds[i],target_speed,delta*4)
 		var next_s := clampf(distances[i]+speeds[i]*delta*dir,0,15000)
-		var next := world.point_at(next_s)+world.basis_at(next_s).x*(-2.6*dir)+Vector3.UP*0.9
+		var next := world.point_at(next_s)+world.basis_at(next_s).x*(world.ROAD_HALF_WIDTH*0.5*dir)+Vector3.UP*0.9
 		var collision := car.move_and_collide(next-car.position)
 		if collision==null: distances[i]=next_s
 		else: speeds[i]=0

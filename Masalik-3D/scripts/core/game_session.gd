@@ -35,8 +35,9 @@ func _ready() -> void:
 		selected=mission.recommendedVehicleId;distance=float(mission.startDistanceM)
 		custom=PersistenceManager.save_data.vehicle_customizations.get(selected,{}).duplicate(true)
 		custom.cargo=float(mission.get("cargoRequiredPct",0))
-	car=RaycastVehicleBody.new();car.spec=VehicleFleetRegistry.get_spec(selected);car.custom=custom;car.position=world.point_at(distance)+Vector3.UP*1.2;car.basis=world.basis_at(distance)
-	if not mission.is_empty() and float(mission.finishDistanceM)<distance: car.basis=car.basis.rotated(Vector3.UP,PI)
+	car=RaycastVehicleBody.new();car.spec=VehicleFleetRegistry.get_spec(selected);car.custom=custom;car.position=world.point_at(distance)+world.basis_at(distance).x*world.ROAD_HALF_WIDTH*0.5+Vector3.UP*1.2;car.basis=world.basis_at(distance)
+	if not mission.is_empty() and float(mission.finishDistanceM)<distance:
+		car.basis=car.basis.rotated(Vector3.UP,PI);car.position=world.point_at(distance)-world.basis_at(distance).x*world.ROAD_HALF_WIDTH*0.5+Vector3.UP*1.2
 	add_child(car);world.player=car;world.distance=distance;world.last_index=int(distance/4);world.update_chunks(distance)
 	if mission.is_empty():
 		car.fuel=clampf(float(PersistenceManager.save_data.fuel),0,float(car.spec.fuelTankLiters));car.health=float(PersistenceManager.save_data.health)
@@ -155,7 +156,8 @@ func _notification(what: int) -> void:
 func recover() -> void:
 	var orientation := world.basis_at(world.distance)
 	if missions.running and missions.direction<0: orientation=orientation.rotated(Vector3.UP,PI)
-	car.teleport_to(Transform3D(orientation,world.point_at(world.distance)+Vector3.UP*1.2))
+	var side := -1.0 if missions.running and missions.direction<0 else 1.0
+	car.teleport_to(Transform3D(orientation,world.point_at(world.distance)+world.basis_at(world.distance).x*world.ROAD_HALF_WIDTH*0.5*side+Vector3.UP*1.2))
 	controls.reset_input();starting_parked=true
 func show_panel(title: String) -> VBoxContainer:
 	controls.reset_input();controls.hide();top.hide();status.hide();navigation.hide();mini_map.hide();instruments.hide();hud.get_node("GearControls").hide()

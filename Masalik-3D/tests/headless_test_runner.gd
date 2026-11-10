@@ -42,7 +42,7 @@ func run() -> void:
 		check(road_car.grounded>=3,"native road supports wheels at "+str(s))
 		check(road_car.position.y>world.point_at(s).y-2,"no fall through generated terrain at "+str(s))
 		for side in [-1.0,1.0]:
-			var test_point: Vector3=world.point_at(s)+world.basis_at(s).x*side*4.0
+			var test_point: Vector3=world.point_at(s)+world.basis_at(s).x*side*world.ROAD_HALF_WIDTH*0.8
 			var ray := PhysicsRayQueryParameters3D.create(test_point+Vector3.UP*10,test_point-Vector3.UP*10)
 			ray.exclude=[road_car.get_rid()]
 			var hit := world.get_world_3d().direct_space_state.intersect_ray(ray)

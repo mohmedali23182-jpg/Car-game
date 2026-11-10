@@ -3,6 +3,7 @@ extends Node3D
 const LENGTH := 15000.0
 const STEP := 4.0
 const CHUNK := 500.0
+const ROAD_HALF_WIDTH := 3.6
 var points := PackedVector3Array()
 var rights := PackedVector3Array()
 var curve := Curve3D.new()
@@ -147,17 +148,26 @@ func build_chunk(id: int) -> Node3D:
 	var first := int(id*CHUNK/STEP)
 	var end := int((id+1)*CHUNK/STEP)
 	var roads: Dictionary={}
+	var shoulders := SurfaceTool.new();shoulders.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for i in range(first, end):
 		var surface := surface_at(i*STEP)
 		if not roads.has(surface):
 			var tool := SurfaceTool.new();tool.begin(Mesh.PRIMITIVE_TRIANGLES);roads[surface]=tool
 		var road: SurfaceTool=roads[surface]
-		var a := points[i]-rights[i]*5.5
-		var b := points[i]+rights[i]*5.5
-		var c := points[i+1]-rights[i+1]*5.5
-		var d := points[i+1]+rights[i+1]*5.5
-		triangle(road, a,b,c); triangle(road,b,d,c)
+		var a := points[i]-rights[i]*ROAD_HALF_WIDTH
+		var b := points[i]+rights[i]*ROAD_HALF_WIDTH
+		var c := points[i+1]-rights[i+1]*ROAD_HALF_WIDTH
+		var d := points[i+1]+rights[i+1]*ROAD_HALF_WIDTH
+		triangle(road,a,b,c);triangle(road,b,d,c)
+		for side in [-1.0,1.0]:
+			var inner_a: Vector3 = points[i]+rights[i]*side*ROAD_HALF_WIDTH-Vector3.UP*0.015
+			var outer_a: Vector3 = points[i]+rights[i]*side*(ROAD_HALF_WIDTH+0.9)-Vector3.UP*0.16
+			var inner_b: Vector3 = points[i+1]+rights[i+1]*side*ROAD_HALF_WIDTH-Vector3.UP*0.015
+			var outer_b: Vector3 = points[i+1]+rights[i+1]*side*(ROAD_HALF_WIDTH+0.9)-Vector3.UP*0.16
+			if side>0: triangle(shoulders,inner_a,outer_a,inner_b);triangle(shoulders,outer_a,outer_b,inner_b)
+			else: triangle(shoulders,outer_a,inner_a,outer_b);triangle(shoulders,inner_a,inner_b,outer_b)
 	for surface in roads: mesh_body(root,roads[surface],materials[surface],surface)
+	mesh_body(root,shoulders,materials.terrain,"dirt")
 	var terrain := SurfaceTool.new()
 	terrain.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var offsets: Array[float]=terrain_offsets
@@ -176,13 +186,13 @@ func build_chunk(id: int) -> Node3D:
 		var frame := basis_at((i+0.5)*STEP)
 		var midpoint := (points[i]+points[i+1])*0.5
 		for side in [-1.0,1.0]:
-			edge_marks.append(Transform3D(frame,midpoint+rights[i]*side*4.9+Vector3.UP*0.025))
+			edge_marks.append(Transform3D(frame,midpoint+rights[i]*side*(ROAD_HALF_WIDTH-0.25)+Vector3.UP*0.025))
 			var entrance := false
 			for stop in service_distances:
 				if side>0 and absf((i+0.5)*STEP-stop)<28: entrance=true
 			if region in [0,1] and i%3==0 and not entrance:
-				posts.append(Transform3D(frame,midpoint+rights[i]*side*6.15+Vector3.UP*0.45))
-			if region in [0,1] and not entrance: rails.append(Transform3D(frame,midpoint+rights[i]*side*6.15+Vector3.UP*0.85))
+				posts.append(Transform3D(frame,midpoint+rights[i]*side*(ROAD_HALF_WIDTH+0.65)+Vector3.UP*0.45))
+			if region in [0,1] and not entrance: rails.append(Transform3D(frame,midpoint+rights[i]*side*(ROAD_HALF_WIDTH+0.65)+Vector3.UP*0.85))
 		if i%4==0: marks.append(Transform3D(frame,midpoint+Vector3.UP*0.03))
 	var box := BoxMesh.new();box.size=Vector3(0.14,0.025,3.4);instances(root,box,materials.gold,marks,500)
 	box=BoxMesh.new();box.size=Vector3(0.13,0.025,4.15);instances(root,box,materials.white,edge_marks,500)

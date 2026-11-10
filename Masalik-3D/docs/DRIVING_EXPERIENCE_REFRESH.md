@@ -38,3 +38,9 @@ Latest local assertions: 210 passes, plus native UI tests covering station trans
 The native photo album now previews actual locally saved captures and provides local export through a system file picker; CI also renders this positive album flow using a real runtime capture.
 
 Final regression repairs route vehicle recovery through PhysicsDirectBodyState3D, samples crop rows on actual terrain triangles, preserves local mesh transforms during architecture batching, and applies tire contact forces at the road contact point. Tests assert recovery persistence and the physically correct body pitch under acceleration/braking.
+
+## Road proportions and traffic follow-up
+
+The carriageway is now 7.2 m wide with graded, collidable 0.9 m dirt shoulders. Edge markings and guardrails follow the same width. Player spawn/recovery and opposing traffic use the right-hand lane, including reverse-direction missions. Traffic sensing includes speed-dependent braking distance and gradually reduces target speed behind obstacles.
+
+Local verification: 210 assertions and UI integration passed, including right-hand lane placement and an approaching NPC stopping behind the parked player. The CI full-route drive and rendered evidence gate Android publication. Physical-device acceptance remains pending.

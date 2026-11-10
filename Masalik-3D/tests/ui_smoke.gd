@@ -16,6 +16,21 @@ func run() -> void:
 	if not game.starting_parked or game.car.current_speed_kmh>2:
 		push_error("Automatic startup parking failed");get_tree().quit(1);return
 	print("UI PASS startup parking and horizon camera")
+	for i in range(game.traffic.active_count):
+		var s: float=game.traffic.distances[i]
+		var offset: Vector3=game.traffic.pool[i].position-game.world.point_at(s)
+		var direction := 1.0 if i%2==0 else -1.0
+		if offset.dot(game.world.basis_at(s).x)*direction<0.5: push_error("Traffic lane-side regression");get_tree().quit(1);return
+	print("UI PASS right-hand traffic lane placement")
+	game.traffic.active_count=1
+	var player_s := game.world.distance
+	game.traffic.distances[0]=player_s-18
+	game.traffic.pool[0].position=game.world.point_at(player_s-18)+game.world.basis_at(player_s-18).x*game.world.ROAD_HALF_WIDTH*0.5+Vector3.UP*0.9
+	game.traffic.speeds[0]=9
+	for frame in range(240): await get_tree().physics_frame
+	if player_s-game.traffic.distances[0]<5 or game.traffic.speeds[0]>2:
+		push_error("Traffic stopping-distance regression");get_tree().quit(1);return
+	print("UI PASS traffic safely stops behind parked player")
 	game.pause_menu();await get_tree().process_frame;game.resume();await get_tree().process_frame
 	game.pause_menu();await get_tree().process_frame;game.control_studio();await get_tree().process_frame;game.resume();await get_tree().process_frame
 	game.map_screen();await get_tree().process_frame;game.resume();await get_tree().process_frame
