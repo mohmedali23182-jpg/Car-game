@@ -7,15 +7,113 @@ import {
   ROAD_WIDTH_M,
   RoadSample,
   TOTAL_CHUNKS_COUNT,
+  TOTAL_ROAD_LENGTH_M,
   WORLD_POIS,
 } from './roadSpline';
 import {
   EffectiveGraphicsQuality,
+  NearbyTrafficSignalInfo,
   SurfaceType,
   TimeOfDayPreset,
+  TrafficSignalPhase,
   WeatherPreset,
   WheelTelemetry,
 } from './types';
+
+export function presetToWorldTimeHours(preset: TimeOfDayPreset): number {
+  switch (preset) {
+    case 'dawn':
+      return 5.4;
+    case 'sunrise':
+      return 6.35;
+    case 'morning':
+      return 9.0;
+    case 'noon':
+      return 12.75;
+    case 'afternoon':
+      return 15.75;
+    case 'sunset':
+      return 18.0;
+    case 'night':
+      return 22.4;
+  }
+}
+
+export function worldTimeHoursToPreset(rawHours: number): TimeOfDayPreset {
+  const h = ((rawHours % 24) + 24) % 24;
+  if (h >= 4.8 && h < 5.9) return 'dawn';
+  if (h >= 5.9 && h < 7.2) return 'sunrise';
+  if (h >= 7.2 && h < 11.2) return 'morning';
+  if (h >= 11.2 && h < 14.5) return 'noon';
+  if (h >= 14.5 && h < 17.2) return 'afternoon';
+  if (h >= 17.2 && h < 19.3) return 'sunset';
+  return 'night';
+}
+
+export function formatWorldTimeHours(rawHours: number): string {
+  const h = ((rawHours % 24) + 24) % 24;
+  const hh = Math.floor(h);
+  const mm = Math.floor((h - hh) * 60);
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+interface AtmosphereKeyframe {
+  hour: number;
+  sky: number;
+  sunColor: number;
+  sunIntensity: number;
+  hemiIntensity: number;
+  nightFactor: number;
+  starOpacity: number;
+}
+
+const ATMOSPHERE_KEYFRAMES: AtmosphereKeyframe[] = [
+  { hour: 0.0, sky: 0x060b16, sunColor: 0x94a3b8, sunIntensity: 0.34, hemiIntensity: 0.28, nightFactor: 1.0, starOpacity: 0.92 },
+  { hour: 4.8, sky: 0x162238, sunColor: 0x94a3b8, sunIntensity: 0.45, hemiIntensity: 0.34, nightFactor: 0.85, starOpacity: 0.65 },
+  { hour: 5.8, sky: 0x4b5578, sunColor: 0xfdba74, sunIntensity: 1.12, hemiIntensity: 0.56, nightFactor: 0.45, starOpacity: 0.25 },
+  { hour: 6.7, sky: 0xd98a6c, sunColor: 0xfb923c, sunIntensity: 1.78, hemiIntensity: 0.72, nightFactor: 0.16, starOpacity: 0.0 },
+  { hour: 8.8, sky: 0x82b6e4, sunColor: 0xfff4d6, sunIntensity: 2.25, hemiIntensity: 0.88, nightFactor: 0.0, starOpacity: 0.0 },
+  { hour: 12.6, sky: 0x5eb8f8, sunColor: 0xffffff, sunIntensity: 2.55, hemiIntensity: 0.96, nightFactor: 0.0, starOpacity: 0.0 },
+  { hour: 16.0, sky: 0x7db3f0, sunColor: 0xfef08a, sunIntensity: 2.15, hemiIntensity: 0.84, nightFactor: 0.0, starOpacity: 0.0 },
+  { hour: 17.9, sky: 0xc86d32, sunColor: 0xf97316, sunIntensity: 1.52, hemiIntensity: 0.62, nightFactor: 0.52, starOpacity: 0.05 },
+  { hour: 19.3, sky: 0x18233a, sunColor: 0xf59e0b, sunIntensity: 0.58, hemiIntensity: 0.38, nightFactor: 0.88, starOpacity: 0.58 },
+  { hour: 21.2, sky: 0x080d18, sunColor: 0x94a3b8, sunIntensity: 0.36, hemiIntensity: 0.29, nightFactor: 1.0, starOpacity: 0.9 },
+  { hour: 24.0, sky: 0x060b16, sunColor: 0x94a3b8, sunIntensity: 0.34, hemiIntensity: 0.28, nightFactor: 1.0, starOpacity: 0.92 },
+];
+
+export function sampleContinuousAtmosphere(rawHours: number): {
+  skyColor: THREE.Color;
+  sunColor: THREE.Color;
+  sunIntensity: number;
+  hemiIntensity: number;
+  nightFactor: number;
+  starOpacity: number;
+} {
+  const h = ((rawHours % 24) + 24) % 24;
+  let k0 = ATMOSPHERE_KEYFRAMES[0];
+  let k1 = ATMOSPHERE_KEYFRAMES[ATMOSPHERE_KEYFRAMES.length - 1];
+  for (let i = 0; i < ATMOSPHERE_KEYFRAMES.length - 1; i++) {
+    if (h >= ATMOSPHERE_KEYFRAMES[i].hour && h <= ATMOSPHERE_KEYFRAMES[i + 1].hour) {
+      k0 = ATMOSPHERE_KEYFRAMES[i];
+      k1 = ATMOSPHERE_KEYFRAMES[i + 1];
+      break;
+    }
+  }
+  const span = Math.max(0.001, k1.hour - k0.hour);
+  const t = THREE.MathUtils.clamp((h - k0.hour) / span, 0, 1);
+  const smoothT = t * t * (3 - 2 * t);
+
+  const skyColor = new THREE.Color(k0.sky).lerp(new THREE.Color(k1.sky), smoothT);
+  const sunColor = new THREE.Color(k0.sunColor).lerp(new THREE.Color(k1.sunColor), smoothT);
+  return {
+    skyColor,
+    sunColor,
+    sunIntensity: THREE.MathUtils.lerp(k0.sunIntensity, k1.sunIntensity, smoothT),
+    hemiIntensity: THREE.MathUtils.lerp(k0.hemiIntensity, k1.hemiIntensity, smoothT),
+    nightFactor: THREE.MathUtils.lerp(k0.nightFactor, k1.nightFactor, smoothT),
+    starOpacity: THREE.MathUtils.lerp(k0.starOpacity, k1.starOpacity, smoothT),
+  };
+}
 
 interface TrafficVehicleAgent {
   distanceM: number;
@@ -27,16 +125,28 @@ interface TrafficVehicleAgent {
   color: THREE.Color;
 }
 
+interface TrafficSignalNode {
+  id: string;
+  nameAr: string;
+  distanceM: number;
+  offsetSec: number;
+  phase: TrafficSignalPhase;
+  secondsRemaining: number;
+  redMat: THREE.MeshStandardMaterial;
+  yellowMat: THREE.MeshStandardMaterial;
+  greenMat: THREE.MeshStandardMaterial;
+}
+
 export interface HighlandWorld {
   worldGroup: THREE.Group;
   applyQuality: (quality: EffectiveGraphicsQuality) => void;
   applyAtmosphere: (
-    timeOfDay: TimeOfDayPreset,
+    timeOfDayOrHours: TimeOfDayPreset | number,
     weather: WeatherPreset,
     scene: THREE.Scene,
     sunLight: THREE.DirectionalLight,
     hemiLight: THREE.HemisphereLight
-  ) => number;
+  ) => { skyHex: number; nightFactor: number };
   updateWorldStreamingAndTraffic: (
     elapsedSec: number,
     dt: number,
@@ -51,6 +161,7 @@ export interface HighlandWorld {
     activeChunksCount: number;
     activeTrafficCount: number;
     lightningFlashTriggered: boolean;
+    nearbyTrafficSignal: NearbyTrafficSignalInfo | null;
   };
   dispose: () => void;
 }
@@ -219,6 +330,12 @@ export function buildHighlandWorld(
             tempColor.copy(tihamaEarthCol);
           } else if (s.regionId === 'wadi_rayhan') {
             tempColor.copy(c % 2 === 0 ? wadiLushCol : cliffStoneCol);
+          } else if (s.regionId === 'ibb_green_peaks') {
+            tempColor.copy(c % 3 === 0 ? wadiLushCol : terraceGreenCol);
+          } else if (s.regionId === 'sanaa_highlands') {
+            tempColor.copy(cliffStoneCol).lerp(copperStrataCol, c % 2 === 0 ? 0.35 : 0.12);
+          } else if (s.regionId === 'shibam_hadramout') {
+            tempColor.copy(desertSandCol).lerp(copperStrataCol, 0.22);
           } else {
             const heightBand = Math.abs(Math.floor(wy / 3.6)) % 4;
             if (heightBand === 0) tempColor.copy(terraceGreenCol);
@@ -630,6 +747,336 @@ export function buildHighlandWorld(
   mudHouseInstanced.computeBoundingSphere();
   worldGroup.add(mudHouseInstanced);
 
+  // Shibam Hadramout Iconic Mud-Brick Skyscrapers ("Manhattan of the Desert") & Sana'a Qamariya Towers
+  const shibamTowerCount = 34;
+  const shibamTowerGeo = trackGeo(new THREE.BoxGeometry(7.4, 24.0, 6.8));
+  shibamTowerGeo.translate(0, 12.0, 0);
+  const shibamTowersInstanced = new THREE.InstancedMesh(
+    shibamTowerGeo,
+    materials.yemeniMudBrickMaterial,
+    shibamTowerCount
+  );
+  for (let i = 0; i < shibamTowerCount; i++) {
+    const distM = 19950 + i * 56;
+    const s = mountainRoad.getSampleAtDistance(distM);
+    const side = i % 2 === 0 ? -1 : 1;
+    const lat = side * (16.5 + (i % 4) * 6.2);
+    const tx = s.position.x + s.binormal.x * lat;
+    const tz = s.position.z + s.binormal.z * lat;
+    const q = mountainRoad.queryGroundAtPoint(tx, tz, s.distanceM);
+    const yaw = Math.atan2(s.tangent.x, s.tangent.z);
+    dummy.position.set(tx, q.groundHeightY - 1.2, tz);
+    dummy.rotation.set(0, yaw, 0);
+    dummy.scale.set(
+      0.85 + (i % 3) * 0.14,
+      0.88 + (i % 4) * 0.19,
+      0.85 + ((i + 1) % 3) * 0.12
+    );
+    dummy.updateMatrix();
+    shibamTowersInstanced.setMatrixAt(i, dummy.matrix);
+  }
+  shibamTowersInstanced.instanceMatrix.needsUpdate = true;
+  shibamTowersInstanced.computeBoundingSphere();
+  worldGroup.add(shibamTowersInstanced);
+
+  // Sana'a Highland Basalt & Qamariya Stone Towers (15.1km - 17.3km)
+  const sanaaTowerCount = 28;
+  const sanaaTowerGeo = trackGeo(new THREE.BoxGeometry(6.8, 16.5, 6.8));
+  sanaaTowerGeo.translate(0, 8.25, 0);
+  const sanaaTowersInstanced = new THREE.InstancedMesh(
+    sanaaTowerGeo,
+    materials.yemeniStoneMaterial,
+    sanaaTowerCount
+  );
+  for (let i = 0; i < sanaaTowerCount; i++) {
+    const distM = 15120 + i * 78;
+    const s = mountainRoad.getSampleAtDistance(distM);
+    const side = i % 2 === 0 ? -1 : 1;
+    const lat = side * (15.5 + (i % 3) * 6.5);
+    const tx = s.position.x + s.binormal.x * lat;
+    const tz = s.position.z + s.binormal.z * lat;
+    const q = mountainRoad.queryGroundAtPoint(tx, tz, s.distanceM);
+    const yaw = Math.atan2(s.tangent.x, s.tangent.z);
+    dummy.position.set(tx, q.groundHeightY - 1.2, tz);
+    dummy.rotation.set(0, yaw, 0);
+    dummy.scale.set(0.95, 0.85 + (i % 4) * 0.14, 0.95);
+    dummy.updateMatrix();
+    sanaaTowersInstanced.setMatrixAt(i, dummy.matrix);
+  }
+  sanaaTowersInstanced.instanceMatrix.needsUpdate = true;
+  sanaaTowersInstanced.computeBoundingSphere();
+  worldGroup.add(sanaaTowersInstanced);
+
+  // 6B. REAL URBAN STREETS: Illuminated 3D Street Lamps + Warm Ground Glow Pools + Crosswalks
+  const urbanLampSpecs: { x: number; y: number; z: number; yaw: number; side: number; halfW: number }[] = [];
+  const urbanStreetZones: [number, number, number][] = [
+    [50, 1520, 40],      // Taiz City Avenue
+    [5050, 5780, 44],    // Wadi Rayhan Town Street
+    [8050, 9220, 40],    // Tihama Boulevard
+    [10650, 12280, 38],  // Aden Coastal Corniche
+    [15050, 16420, 38],  // Sana'a Old City Boulevard
+    [17420, 18460, 42],  // Ibb Green City Avenue
+    [19920, 21520, 40],  // Shibam Hadramout Boulevard
+  ];
+
+  for (const [startM, endM, stepM] of urbanStreetZones) {
+    let toggleSide = 0;
+    for (let d = startM; d <= endM; d += stepM) {
+      const s = mountainRoad.getSampleAtDistance(d);
+      if (s.hasTunnel) continue;
+      const yaw = Math.atan2(s.tangent.x, -s.tangent.z);
+      const halfW = s.widthM * 0.5;
+      // Place paired lamps on boulevards and staggered along avenues
+      const sides = toggleSide % 2 === 0 ? [-1, 1] : [1];
+      for (const side of sides) {
+        const lat = side * (halfW + 1.05);
+        urbanLampSpecs.push({
+          x: s.position.x + s.binormal.x * lat,
+          y: s.position.y + s.binormal.y * lat,
+          z: s.position.z + s.binormal.z * lat,
+          yaw,
+          side,
+          halfW,
+        });
+      }
+      toggleSide++;
+    }
+  }
+
+  const lampCount = urbanLampSpecs.length;
+  const lampPoleGeo = trackGeo(new THREE.CylinderGeometry(0.08, 0.13, 6.8, 7));
+  lampPoleGeo.translate(0, 3.4, 0);
+  const lampArmGeo = trackGeo(new THREE.BoxGeometry(1.75, 0.11, 0.14));
+  const lampHeadGeo = trackGeo(new THREE.BoxGeometry(0.58, 0.14, 0.28));
+
+  const glowCanvas = document.createElement('canvas');
+  glowCanvas.width = 64;
+  glowCanvas.height = 64;
+  const gCtx = glowCanvas.getContext('2d');
+  if (gCtx) {
+    const gr = gCtx.createRadialGradient(32, 32, 2, 32, 32, 30);
+    gr.addColorStop(0, 'rgba(255, 224, 145, 0.92)');
+    gr.addColorStop(0.5, 'rgba(251, 191, 36, 0.36)');
+    gr.addColorStop(1, 'rgba(251, 191, 36, 0.0)');
+    gCtx.fillStyle = gr;
+    gCtx.fillRect(0, 0, 64, 64);
+  }
+  const lampGlowTex = new THREE.CanvasTexture(glowCanvas);
+
+  const urbanPoleMat = trackMat(
+    new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.72, roughness: 0.38 })
+  );
+  const urbanLampHeadMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0xfef3c7,
+      emissive: new THREE.Color(0xfbbf24),
+      emissiveIntensity: 0.2,
+      roughness: 0.25,
+    })
+  );
+  const urbanGroundGlowMat = trackMat(
+    new THREE.MeshBasicMaterial({
+      map: lampGlowTex,
+      transparent: true,
+      opacity: 0.0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+  );
+  const lampGlowPoolGeo = trackGeo(new THREE.PlaneGeometry(8.5, 8.5));
+  lampGlowPoolGeo.rotateX(-Math.PI * 0.5);
+
+  const streetLampPolesInstanced = new THREE.InstancedMesh(lampPoleGeo, urbanPoleMat, lampCount);
+  const streetLampArmsInstanced = new THREE.InstancedMesh(lampArmGeo, urbanPoleMat, lampCount);
+  const streetLampHeadsInstanced = new THREE.InstancedMesh(lampHeadGeo, urbanLampHeadMat, lampCount);
+  const streetLampGlowsInstanced = new THREE.InstancedMesh(lampGlowPoolGeo, urbanGroundGlowMat, lampCount);
+
+  for (let i = 0; i < lampCount; i++) {
+    const lp = urbanLampSpecs[i];
+    const inward = -lp.side;
+    const cosY = Math.cos(lp.yaw);
+    const sinY = Math.sin(lp.yaw);
+
+    // Pole
+    dummy.position.set(lp.x, lp.y - 0.1, lp.z);
+    dummy.rotation.set(0, lp.yaw, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    streetLampPolesInstanced.setMatrixAt(i, dummy.matrix);
+
+    // Cantilever arm reaching over the street lane
+    const armOffsetX = inward * 0.82;
+    dummy.position.set(
+      lp.x + armOffsetX * cosY,
+      lp.y + 6.65,
+      lp.z - armOffsetX * sinY
+    );
+    dummy.rotation.set(0, lp.yaw, 0);
+    dummy.updateMatrix();
+    streetLampArmsInstanced.setMatrixAt(i, dummy.matrix);
+
+    // Emissive luminaire fixture
+    const headOffsetX = inward * 1.55;
+    dummy.position.set(
+      lp.x + headOffsetX * cosY,
+      lp.y + 6.52,
+      lp.z - headOffsetX * sinY
+    );
+    dummy.rotation.set(0, lp.yaw, 0);
+    dummy.updateMatrix();
+    streetLampHeadsInstanced.setMatrixAt(i, dummy.matrix);
+
+    // Soft warm amber light pool projected onto the asphalt below
+    const poolOffsetX = inward * 2.15;
+    dummy.position.set(
+      lp.x + poolOffsetX * cosY,
+      lp.y + 0.12,
+      lp.z - poolOffsetX * sinY
+    );
+    dummy.rotation.set(0, lp.yaw, 0);
+    dummy.updateMatrix();
+    streetLampGlowsInstanced.setMatrixAt(i, dummy.matrix);
+  }
+  streetLampPolesInstanced.instanceMatrix.needsUpdate = true;
+  streetLampArmsInstanced.instanceMatrix.needsUpdate = true;
+  streetLampHeadsInstanced.instanceMatrix.needsUpdate = true;
+  streetLampGlowsInstanced.instanceMatrix.needsUpdate = true;
+  streetLampPolesInstanced.computeBoundingSphere();
+  streetLampArmsInstanced.computeBoundingSphere();
+  streetLampHeadsInstanced.computeBoundingSphere();
+  streetLampGlowsInstanced.computeBoundingSphere();
+  worldGroup.add(
+    streetLampPolesInstanced,
+    streetLampArmsInstanced,
+    streetLampHeadsInstanced,
+    streetLampGlowsInstanced
+  );
+
+  // 6C. WORKING 3D TRAFFIC LIGHT INTERSECTIONS & CROSSWALKS (7 Yemeni City Crossings)
+  const signalDefinitions: { id: string; nameAr: string; distanceM: number }[] = [
+    { id: 'sig_taiz', nameAr: 'تقاطع جولة تعز', distanceM: 640 },
+    { id: 'sig_wadi', nameAr: 'تقاطع وادي ريحان', distanceM: 5360 },
+    { id: 'sig_tihama', nameAr: 'تقاطع شارع تهامة', distanceM: 8480 },
+    { id: 'sig_aden', nameAr: 'تقاطع كورنيش عدن', distanceM: 11320 },
+    { id: 'sig_sanaa', nameAr: 'تقاطع باب صنعاء', distanceM: 15520 },
+    { id: 'sig_ibb', nameAr: 'تقاطع بوابة إب الخضراء', distanceM: 17820 },
+    { id: 'sig_shibam', nameAr: 'تقاطع شبام حضرموت', distanceM: 20450 },
+  ];
+
+  const signalHousingMat = trackMat(
+    new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.6 })
+  );
+  const crosswalkMat = trackMat(
+    new THREE.MeshBasicMaterial({ color: 0xf8fafc, transparent: true, opacity: 0.85 })
+  );
+  const signalPoleGeo = trackGeo(new THREE.CylinderGeometry(0.14, 0.18, 6.4, 8));
+  const signalCantileverGeo = trackGeo(new THREE.BoxGeometry(6.8, 0.22, 0.22));
+  const signalBoxGeo = trackGeo(new THREE.BoxGeometry(0.62, 1.65, 0.42));
+  const signalLensGeo = trackGeo(new THREE.CircleGeometry(0.18, 12));
+  const crosswalkStripeGeo = trackGeo(new THREE.PlaneGeometry(0.75, 2.8));
+  crosswalkStripeGeo.rotateX(-Math.PI * 0.5);
+
+  const trafficSignals: TrafficSignalNode[] = [];
+
+  signalDefinitions.forEach((def, idx) => {
+    const s = mountainRoad.getSampleAtDistance(def.distanceM);
+    const yaw = Math.atan2(s.tangent.x, -s.tangent.z);
+    const halfW = s.widthM * 0.5;
+
+    const redMat = trackMat(
+      new THREE.MeshStandardMaterial({
+        color: 0x7f1d1d,
+        emissive: new THREE.Color(0xef4444),
+        emissiveIntensity: 0.1,
+      })
+    );
+    const yellowMat = trackMat(
+      new THREE.MeshStandardMaterial({
+        color: 0x78350f,
+        emissive: new THREE.Color(0xf59e0b),
+        emissiveIntensity: 0.1,
+      })
+    );
+    const greenMat = trackMat(
+      new THREE.MeshStandardMaterial({
+        color: 0x14532d,
+        emissive: new THREE.Color(0x22c55e),
+        emissiveIntensity: 2.2,
+      })
+    );
+
+    const gGroup = new THREE.Group();
+    gGroup.position.copy(s.position);
+    gGroup.rotation.y = yaw;
+
+    // Right-side vertical gantry pole & overhead beam
+    const rPole = new THREE.Mesh(signalPoleGeo, urbanPoleMat);
+    rPole.position.set(halfW + 0.85, 3.2, 0);
+    const lPole = new THREE.Mesh(signalPoleGeo, urbanPoleMat);
+    lPole.position.set(-(halfW + 0.85), 3.2, 0);
+
+    const overheadBeam = new THREE.Mesh(
+      trackGeo(new THREE.BoxGeometry(s.widthM + 2.1, 0.26, 0.26)),
+      urbanPoleMat
+    );
+    overheadBeam.position.set(0, 6.2, 0);
+    gGroup.add(rPole, lPole, overheadBeam);
+
+    // Mount two overhead signal heads (one per travel lane, visible from both directions)
+    const laneXs = [2.1, -2.1];
+    for (const lx of laneXs) {
+      const box = new THREE.Mesh(signalBoxGeo, signalHousingMat);
+      box.position.set(lx, 5.45, 0);
+      gGroup.add(box);
+
+      // Front-facing (+Z faces approaching forward player) & rear-facing (-Z) lenses
+      const faceZOffsets = [0.22, -0.22];
+      for (const fz of faceZOffsets) {
+        const rotY = fz > 0 ? 0 : Math.PI;
+        const rLens = new THREE.Mesh(signalLensGeo, redMat);
+        rLens.position.set(lx, 5.88, fz);
+        rLens.rotation.y = rotY;
+
+        const yLens = new THREE.Mesh(signalLensGeo, yellowMat);
+        yLens.position.set(lx, 5.45, fz);
+        yLens.rotation.y = rotY;
+
+        const gLens = new THREE.Mesh(signalLensGeo, greenMat);
+        gLens.position.set(lx, 5.02, fz);
+        gLens.rotation.y = rotY;
+
+        gGroup.add(rLens, yLens, gLens);
+      }
+    }
+
+    // Zebra crosswalk stripes on road surface right before the gantry
+    for (let sx = -halfW + 0.9; sx <= halfW - 0.9; sx += 1.45) {
+      const stripe = new THREE.Mesh(crosswalkStripeGeo, crosswalkMat);
+      stripe.position.set(sx, 0.08, 3.2);
+      gGroup.add(stripe);
+    }
+
+    // Also add unused cantilever reference disposal coverage
+    if (idx === -1) {
+      gGroup.add(new THREE.Mesh(signalCantileverGeo, urbanPoleMat));
+    }
+
+    chunkGroups[s.chunkId].add(gGroup);
+
+    trafficSignals.push({
+      id: def.id,
+      nameAr: def.nameAr,
+      distanceM: def.distanceM,
+      offsetSec: idx * 7.5,
+      phase: 'green',
+      secondsRemaining: 12,
+      redMat,
+      yellowMat,
+      greenMat,
+    });
+  });
+
   // Finish Archway
   const finishArchGroup = new THREE.Group();
   const pillarGeo = trackGeo(new THREE.BoxGeometry(0.65, 6.2, 0.65));
@@ -763,8 +1210,8 @@ export function buildHighlandWorld(
   rivalGroup.visible = false;
   worldGroup.add(rivalGroup);
 
-  const maxTrafficAgents = 18;
-  let activeTrafficCount = 14;
+  const maxTrafficAgents = 28;
+  let activeTrafficCount = 22;
   let streamingChunkRadius = 3;
   const trafficAgents: TrafficVehicleAgent[] = [];
   const trafficColors = [
@@ -774,6 +1221,8 @@ export function buildHighlandWorld(
     new THREE.Color(0xdc2626),
     new THREE.Color(0x16a34a),
     new THREE.Color(0x94a3b8),
+    new THREE.Color(0x475569),
+    new THREE.Color(0xeab308),
   ];
 
   for (let i = 0; i < maxTrafficAgents; i++) {
@@ -786,20 +1235,21 @@ export function buildHighlandWorld(
     ];
     const tType = types[i % types.length];
     trafficAgents.push({
-      distanceM: (i * 820 + 180) % 14800,
-      speedMs: tType === 'truck' ? 10.5 : 14.5,
-      baseSpeedMs: tType === 'truck' ? 10.5 : 14.5,
+      distanceM: (i * 760 + 160) % (TOTAL_ROAD_LENGTH_M - 180),
+      speedMs: tType === 'truck' ? 10.5 : tType === 'minibus' ? 12.5 : 15.0,
+      baseSpeedMs: tType === 'truck' ? 10.5 : tType === 'minibus' ? 12.5 : 15.0,
       direction: dir,
-      laneOffsetM: dir === 1 ? 2.4 : -2.4,
+      laneOffsetM: dir === 1 ? 2.45 : -2.45,
       type: tType,
       color: trafficColors[i % trafficColors.length],
     });
   }
 
-  const trafficBodyGeo = trackGeo(new THREE.BoxGeometry(1.85, 1.38, 4.2));
-  trafficBodyGeo.translate(0, 0.85, 0);
+  // Multi-Part Lively AI Traffic: Body + Tinted Cabin + Headlights + Glowing Taillights
+  const trafficBodyGeo = trackGeo(new THREE.BoxGeometry(1.88, 0.82, 4.25));
+  trafficBodyGeo.translate(0, 0.62, 0);
   const trafficBodyMat = trackMat(
-    new THREE.MeshStandardMaterial({ roughness: 0.32, metalness: 0.48 })
+    new THREE.MeshStandardMaterial({ roughness: 0.28, metalness: 0.52 })
   );
   const trafficInstanced = new THREE.InstancedMesh(
     trafficBodyGeo,
@@ -807,14 +1257,64 @@ export function buildHighlandWorld(
     maxTrafficAgents
   );
   trafficInstanced.frustumCulled = false;
+
+  const trafficCabinGeo = trackGeo(new THREE.BoxGeometry(1.66, 0.62, 2.25));
+  trafficCabinGeo.translate(0, 1.32, 0.12);
+  const trafficCabinMat = trackMat(
+    new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.16, metalness: 0.72 })
+  );
+  const trafficCabinInstanced = new THREE.InstancedMesh(
+    trafficCabinGeo,
+    trafficCabinMat,
+    maxTrafficAgents
+  );
+  trafficCabinInstanced.frustumCulled = false;
+
+  const trafficHeadlightGeo = trackGeo(new THREE.BoxGeometry(1.52, 0.2, 0.12));
+  trafficHeadlightGeo.translate(0, 0.76, -2.14);
+  const trafficHeadlightMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0xfffbeb,
+      emissive: new THREE.Color(0xfef3c7),
+      emissiveIntensity: 0.65,
+    })
+  );
+  const trafficHeadlightsInstanced = new THREE.InstancedMesh(
+    trafficHeadlightGeo,
+    trafficHeadlightMat,
+    maxTrafficAgents
+  );
+  trafficHeadlightsInstanced.frustumCulled = false;
+
+  const trafficTaillightGeo = trackGeo(new THREE.BoxGeometry(1.54, 0.2, 0.12));
+  trafficTaillightGeo.translate(0, 0.78, 2.14);
+  const trafficTaillightMat = trackMat(
+    new THREE.MeshStandardMaterial({
+      color: 0x991b1b,
+      emissive: new THREE.Color(0xef4444),
+      emissiveIntensity: 0.75,
+    })
+  );
+  const trafficTaillightsInstanced = new THREE.InstancedMesh(
+    trafficTaillightGeo,
+    trafficTaillightMat,
+    maxTrafficAgents
+  );
+  trafficTaillightsInstanced.frustumCulled = false;
+
   for (let i = 0; i < maxTrafficAgents; i++) {
     trafficInstanced.setColorAt(i, trafficAgents[i].color);
   }
   if (trafficInstanced.instanceColor) trafficInstanced.instanceColor.needsUpdate = true;
-  worldGroup.add(trafficInstanced);
+  worldGroup.add(
+    trafficInstanced,
+    trafficCabinInstanced,
+    trafficHeadlightsInstanced,
+    trafficTaillightsInstanced
+  );
 
   let currentWeather: WeatherPreset = 'clear';
-  let currentTimeOfDay: TimeOfDayPreset = 'morning';
+  let currentWorldHours = 8.75;
   let lastFinishDistM = PHASE2_MISSIONS[0].finishDistanceM;
   let lastLightningTimeSec = 0;
 
@@ -828,7 +1328,7 @@ export function buildHighlandWorld(
         mudHouseInstanced.count = Math.floor(maxMudHouses * 0.45);
         cloudsInstanced.count = 12;
         activeParticleCount = 80;
-        activeTrafficCount = 6;
+        activeTrafficCount = 10;
         streamingChunkRadius = 2;
       } else if (quality === 'medium') {
         trunkInstanced.count = Math.floor(maxTrees * 0.68);
@@ -837,7 +1337,7 @@ export function buildHighlandWorld(
         mudHouseInstanced.count = Math.floor(maxMudHouses * 0.75);
         cloudsInstanced.count = 24;
         activeParticleCount = 150;
-        activeTrafficCount = 11;
+        activeTrafficCount = 16;
         streamingChunkRadius = 3;
       } else if (quality === 'high') {
         trunkInstanced.count = Math.floor(maxTrees * 0.9);
@@ -846,7 +1346,7 @@ export function buildHighlandWorld(
         mudHouseInstanced.count = maxMudHouses;
         cloudsInstanced.count = 34;
         activeParticleCount = 210;
-        activeTrafficCount = 15;
+        activeTrafficCount = 22;
         streamingChunkRadius = 4;
       } else {
         trunkInstanced.count = maxTrees;
@@ -859,88 +1359,35 @@ export function buildHighlandWorld(
         streamingChunkRadius = 5;
       }
       trafficInstanced.count = activeTrafficCount;
+      trafficCabinInstanced.count = activeTrafficCount;
+      trafficHeadlightsInstanced.count = activeTrafficCount;
+      trafficTaillightsInstanced.count = activeTrafficCount;
       weatherParticles.count = activeParticleCount;
     },
-    applyAtmosphere: (timeOfDay, weather, scene, sunLight, hemiLight) => {
+    applyAtmosphere: (timeOfDayOrHours, weather, scene, sunLight, hemiLight) => {
       currentWeather = weather;
-      currentTimeOfDay = timeOfDay;
+      const hours =
+        typeof timeOfDayOrHours === 'number'
+          ? ((timeOfDayOrHours % 24) + 24) % 24
+          : presetToWorldTimeHours(timeOfDayOrHours);
+      currentWorldHours = hours;
 
-      const todPalettes: Record<
-        TimeOfDayPreset,
-        {
-          sky: number;
-          sunColor: number;
-          sunIntensity: number;
-          hemiIntensity: number;
-          sunElev: number;
-          nightGlow: number;
-        }
-      > = {
-        dawn: {
-          sky: 0x3b4d6b,
-          sunColor: 0xfdba74,
-          sunIntensity: 1.15,
-          hemiIntensity: 0.58,
-          sunElev: 25,
-          nightGlow: 0.45,
-        },
-        sunrise: {
-          sky: 0xd98a6c,
-          sunColor: 0xfb923c,
-          sunIntensity: 1.75,
-          hemiIntensity: 0.72,
-          sunElev: 45,
-          nightGlow: 0.2,
-        },
-        morning: {
-          sky: 0x87b8e2,
-          sunColor: 0xfff4d6,
-          sunIntensity: 2.2,
-          hemiIntensity: 0.88,
-          sunElev: 110,
-          nightGlow: 0.05,
-        },
-        noon: {
-          sky: 0x68bdf8,
-          sunColor: 0xffffff,
-          sunIntensity: 2.55,
-          hemiIntensity: 0.96,
-          sunElev: 180,
-          nightGlow: 0.0,
-        },
-        afternoon: {
-          sky: 0x81b6f5,
-          sunColor: 0xfef08a,
-          sunIntensity: 2.15,
-          hemiIntensity: 0.84,
-          sunElev: 105,
-          nightGlow: 0.05,
-        },
-        sunset: {
-          sky: 0xc87236,
-          sunColor: 0xf97316,
-          sunIntensity: 1.55,
-          hemiIntensity: 0.62,
-          sunElev: 28,
-          nightGlow: 0.58,
-        },
-        night: {
-          sky: 0x080d18,
-          sunColor: 0x94a3b8,
-          sunIntensity: 0.35,
-          hemiIntensity: 0.28,
-          sunElev: 85,
-          nightGlow: 0.92,
-        },
-      };
+      const atm = sampleContinuousAtmosphere(hours);
+      const finalSky = atm.skyColor.clone();
+      let fogDensity = 0.00105;
 
-      const p = todPalettes[timeOfDay];
-      const finalSky = new THREE.Color(p.sky);
-      let fogDensity = 0.0011;
+      // Smooth night glow across buildings, street lamps, and AI traffic lights
+      materials.setNightEmissiveIntensity(atm.nightFactor * 0.96);
+      starMat.opacity = atm.starOpacity;
+      celestialMat.color.copy(atm.nightFactor > 0.72 ? new THREE.Color(0xe2e8f0) : atm.sunColor);
 
-      materials.setNightEmissiveIntensity(p.nightGlow);
-      starMat.opacity = timeOfDay === 'night' ? 0.88 : timeOfDay === 'dawn' ? 0.32 : 0.0;
-      celestialMat.color.setHex(timeOfDay === 'night' ? 0xe2e8f0 : p.sunColor);
+      const streetLampGlow = THREE.MathUtils.clamp((atm.nightFactor - 0.18) / 0.55, 0, 1);
+      urbanLampHeadMat.emissiveIntensity = 0.25 + streetLampGlow * 3.1;
+      urbanGroundGlowMat.opacity = streetLampGlow * 0.52;
+      streetLampGlowsInstanced.visible = streetLampGlow > 0.04;
+
+      trafficHeadlightMat.emissiveIntensity = 0.45 + streetLampGlow * 2.8;
+      trafficTaillightMat.emissiveIntensity = 0.65 + streetLampGlow * 2.2;
 
       if (weather === 'cloudy') {
         finalSky.lerp(new THREE.Color(0x64748b), 0.45);
@@ -966,15 +1413,15 @@ export function buildHighlandWorld(
         particleMat.opacity = 0.76;
         cloudMat.opacity = 0.82;
       } else if (weather === 'mountain_fog') {
-        finalSky.lerp(new THREE.Color(0xcbd5e1), timeOfDay === 'night' ? 0.15 : 0.72);
-        fogDensity = 0.0052;
+        finalSky.lerp(new THREE.Color(0xcbd5e1), atm.nightFactor > 0.6 ? 0.18 : 0.72);
+        fogDensity = 0.005;
         materials.roadVertexMaterial.roughness = 0.62;
         materials.roadVertexMaterial.metalness = 0.1;
         particleMat.opacity = 0;
         cloudMat.opacity = 0.78;
       } else if (weather === 'sandstorm') {
-        finalSky.lerp(new THREE.Color(0xc28549), 0.8);
-        fogDensity = 0.0048;
+        finalSky.lerp(new THREE.Color(0xc28549), 0.78);
+        fogDensity = 0.0046;
         materials.roadVertexMaterial.roughness = 0.94;
         materials.roadVertexMaterial.metalness = 0.02;
         particleMat.color.setHex(0xd99b52);
@@ -984,16 +1431,16 @@ export function buildHighlandWorld(
         materials.roadVertexMaterial.roughness = 0.84;
         materials.roadVertexMaterial.metalness = 0.06;
         particleMat.opacity = 0;
-        cloudMat.opacity = timeOfDay === 'night' ? 0.15 : 0.36;
+        cloudMat.opacity = atm.nightFactor > 0.65 ? 0.14 : 0.36;
       }
 
       scene.background = finalSky;
       scene.fog = new THREE.FogExp2(finalSky.getHex(), fogDensity);
-      sunLight.color.setHex(p.sunColor);
-      sunLight.intensity = p.sunIntensity;
-      hemiLight.intensity = p.hemiIntensity;
+      sunLight.color.copy(atm.sunColor);
+      sunLight.intensity = atm.sunIntensity;
+      hemiLight.intensity = atm.hemiIntensity;
 
-      return finalSky.getHex();
+      return { skyHex: finalSky.getHex(), nightFactor: atm.nightFactor };
     },
     updateWorldStreamingAndTraffic: (
       elapsedSec,
@@ -1011,20 +1458,58 @@ export function buildHighlandWorld(
         placeFinishArchAt(finishDistanceM);
       }
 
-      // Position Horizon Mountain Ring, Celestial Disc & Stars relative to player
+      // Position Horizon Mountain Ring, Continuous 24h Celestial Arc (Sun/Moon) & Stars
       horizonRingGroup.position.set(playerPos.x, playerPos.y - 45, playerPos.z);
-      const sunAngle =
-        currentTimeOfDay === 'sunset'
-          ? -0.45
-          : currentTimeOfDay === 'dawn' || currentTimeOfDay === 'sunrise'
-          ? 0.45
-          : 0.15;
+      const isNightDisc = currentWorldHours < 5.6 || currentWorldHours >= 19.2;
+      const arcProgress = isNightDisc
+        ? (((currentWorldHours + 4.8) % 24) / 10.4)
+        : THREE.MathUtils.clamp((currentWorldHours - 5.6) / 13.6, 0, 1);
+      const arcAngle = (arcProgress - 0.5) * Math.PI * 0.88;
       celestialDisc.position.set(
-        playerPos.x + Math.sin(sunAngle) * 620,
-        playerPos.y + (currentTimeOfDay === 'noon' ? 520 : 185),
+        playerPos.x + Math.sin(arcAngle) * 640,
+        playerPos.y + 95 + Math.cos(arcAngle) * 440,
         playerPos.z - 620
       );
       starsPoints.position.set(playerPos.x, playerPos.y, playerPos.z);
+
+      // Update Working 3D Traffic Signal Intersections (14s Green -> 3s Yellow -> 11s Red)
+      let nearbyTrafficSignal: NearbyTrafficSignalInfo | null = null;
+      let nearestSignalDist = 215;
+      const cycleTotal = 28;
+      for (const sig of trafficSignals) {
+        const t = (elapsedSec + sig.offsetSec) % cycleTotal;
+        if (t < 14) {
+          sig.phase = 'green';
+          sig.secondsRemaining = Math.ceil(14 - t);
+          sig.greenMat.emissiveIntensity = 2.8;
+          sig.yellowMat.emissiveIntensity = 0.08;
+          sig.redMat.emissiveIntensity = 0.08;
+        } else if (t < 17) {
+          sig.phase = 'yellow';
+          sig.secondsRemaining = Math.ceil(17 - t);
+          sig.greenMat.emissiveIntensity = 0.08;
+          sig.yellowMat.emissiveIntensity = 2.8;
+          sig.redMat.emissiveIntensity = 0.08;
+        } else {
+          sig.phase = 'red';
+          sig.secondsRemaining = Math.ceil(28 - t);
+          sig.greenMat.emissiveIntensity = 0.08;
+          sig.yellowMat.emissiveIntensity = 0.08;
+          sig.redMat.emissiveIntensity = 3.0;
+        }
+
+        const aheadM = sig.distanceM - playerDistanceM;
+        if (aheadM > -8 && aheadM < nearestSignalDist) {
+          nearestSignalDist = aheadM;
+          nearbyTrafficSignal = {
+            id: sig.id,
+            nameAr: sig.nameAr,
+            distanceAheadM: Math.max(0, Math.round(aheadM)),
+            phase: sig.phase,
+            secondsRemaining: sig.secondsRemaining,
+          };
+        }
+      }
 
       // Update 3D AI Race Rival if active
       if (aiRivalDistanceM !== null && aiRivalDistanceM !== undefined) {
@@ -1062,25 +1547,38 @@ export function buildHighlandWorld(
         if (isNear) loadedCount++;
       }
 
+      const maxRoadDist = TOTAL_ROAD_LENGTH_M - 60;
       for (let i = 0; i < activeTrafficCount; i++) {
         const agent = trafficAgents[i];
 
         const relDist = agent.distanceM - playerDistanceM;
-        if (relDist < -750) {
-          agent.distanceM = Math.min(14900, playerDistanceM + 650 + ((i * 75) % 450));
-        } else if (relDist > 1100) {
-          agent.distanceM = Math.max(50, playerDistanceM - 550 - ((i * 65) % 350));
+        if (relDist < -680) {
+          agent.distanceM = Math.min(maxRoadDist, playerDistanceM + 580 + ((i * 73) % 460));
+        } else if (relDist > 1050) {
+          agent.distanceM = Math.max(45, playerDistanceM - 520 - ((i * 61) % 360));
         }
 
         const s = mountainRoad.getSampleAtDistance(agent.distanceM);
-        const slopeSlowdown = Math.abs(s.gradePct) > 8 ? 0.72 : 1.0;
+        const slopeSlowdown = Math.abs(s.gradePct) > 8 ? 0.76 : 1.0;
         const distToPlayer = Math.abs(agent.distanceM - playerDistanceM);
-        const playerProximityBrake = distToPlayer < 22 ? 0.25 : 1.0;
+        const playerProximityBrake = distToPlayer < 24 ? 0.22 : 1.0;
 
-        agent.speedMs =
-          agent.baseSpeedMs * slopeSlowdown * playerProximityBrake;
+        // Obey Red / Yellow traffic signals smoothly before the crosswalk stop line
+        let signalFactor = 1.0;
+        for (const sig of trafficSignals) {
+          const distToSignal = (sig.distanceM - agent.distanceM) * agent.direction;
+          if (distToSignal > 4 && distToSignal < 36 && sig.phase !== 'green') {
+            signalFactor = distToSignal < 14 ? 0.0 : THREE.MathUtils.clamp((distToSignal - 10) / 26, 0, 1);
+            break;
+          }
+        }
+
+        const desiredSpeed =
+          agent.baseSpeedMs * slopeSlowdown * playerProximityBrake * signalFactor;
+        agent.speedMs = THREE.MathUtils.damp(agent.speedMs, desiredSpeed, 4.5, dt);
         agent.distanceM += agent.direction * agent.speedMs * dt;
-        agent.distanceM = THREE.MathUtils.clamp(agent.distanceM, 30, 14950);
+        if (agent.distanceM > maxRoadDist) agent.distanceM = 45;
+        if (agent.distanceM < 35) agent.distanceM = maxRoadDist - 30;
 
         const updatedSample = mountainRoad.getSampleAtDistance(agent.distanceM);
         const ax =
@@ -1100,16 +1598,24 @@ export function buildHighlandWorld(
         dummy.position.set(ax, ay, az);
         dummy.rotation.set(0, yaw, 0);
         if (agent.type === 'truck') {
-          dummy.scale.set(1.18, 1.55, 1.48);
+          dummy.scale.set(1.18, 1.52, 1.46);
         } else if (agent.type === 'minibus') {
-          dummy.scale.set(1.05, 1.32, 1.15);
+          dummy.scale.set(1.06, 1.32, 1.16);
+        } else if (agent.type === 'pickup') {
+          dummy.scale.set(1.02, 1.08, 1.06);
         } else {
-          dummy.scale.set(1.0, 1.0, 1.0);
+          dummy.scale.set(0.98, 0.94, 0.98);
         }
         dummy.updateMatrix();
         trafficInstanced.setMatrixAt(i, dummy.matrix);
+        trafficCabinInstanced.setMatrixAt(i, dummy.matrix);
+        trafficHeadlightsInstanced.setMatrixAt(i, dummy.matrix);
+        trafficTaillightsInstanced.setMatrixAt(i, dummy.matrix);
       }
       trafficInstanced.instanceMatrix.needsUpdate = true;
+      trafficCabinInstanced.instanceMatrix.needsUpdate = true;
+      trafficHeadlightsInstanced.instanceMatrix.needsUpdate = true;
+      trafficTaillightsInstanced.instanceMatrix.needsUpdate = true;
 
       let lightningFlashTriggered = false;
       if (
@@ -1193,9 +1699,11 @@ export function buildHighlandWorld(
         activeChunksCount: loadedCount,
         activeTrafficCount,
         lightningFlashTriggered,
+        nearbyTrafficSignal,
       };
     },
     dispose: () => {
+      lampGlowTex.dispose();
       geometriesToDispose.forEach((g) => g.dispose());
       materialsToDispose.forEach((m) => m.dispose());
     },

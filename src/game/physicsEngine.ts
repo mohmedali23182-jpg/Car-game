@@ -66,6 +66,8 @@ export class MasalikVehicleDynamics {
   public wipersOn = false;
   public leftIndicatorOn = false;
   public rightIndicatorOn = false;
+  public cruiseControlEnabled = false;
+  public cruiseTargetKmh = 60;
 
   // Optional AI Rival state for Race Missions
   public aiRivalActive = false;
@@ -202,6 +204,45 @@ export class MasalikVehicleDynamics {
     return this.drivetrainMode;
   }
 
+  public toggleEngineIgnition(): boolean {
+    if (this.engineRunning) {
+      this.engineRunning = false;
+      this.cruiseControlEnabled = false;
+    } else if (this.fuelLiters > 0.05 || this.realismMode === 'arcade') {
+      this.engineRunning = true;
+    }
+    return this.engineRunning;
+  }
+
+  public toggleCruiseControl(): boolean {
+    if (this.cruiseControlEnabled) {
+      this.cruiseControlEnabled = false;
+      return false;
+    }
+    const curKmh = Math.round(Math.max(0, this.forwardSpeedMs) * 3.6);
+    if (!this.engineRunning || curKmh < 15) {
+      this.cruiseTargetKmh = Math.max(30, curKmh);
+    } else {
+      this.cruiseTargetKmh = THREE.MathUtils.clamp(curKmh, 25, 130);
+    }
+    if (this.engineRunning) {
+      this.cruiseControlEnabled = true;
+      if (this.transmissionMode === 'auto' && this.autoShifter !== 'D') {
+        this.autoShifter = 'D';
+      }
+    }
+    return this.cruiseControlEnabled;
+  }
+
+  public adjustCruiseSpeed(deltaKmh: number): number {
+    this.cruiseTargetKmh = THREE.MathUtils.clamp(
+      this.cruiseTargetKmh + deltaKmh,
+      25,
+      130
+    );
+    return this.cruiseTargetKmh;
+  }
+
   public resetToRoad(targetDistanceM?: number): void {
     const dist =
       targetDistanceM !== undefined
@@ -300,12 +341,18 @@ export class MasalikVehicleDynamics {
       this.engineRunning = false;
     }
 
-    // Automatic transmission intelligent engagement: never get stuck in P or N when pressing gas!
+    // Automatic transmission intelligent engagement
     if (this.transmissionMode === 'auto') {
       if (input.throttle > 0.08 && (this.autoShifter === 'P' || this.autoShifter === 'N')) {
         this.autoShifter = 'D';
       }
-      if (!this.engineRunning && input.throttle > 0.08 && this.fuelLiters > 0.1) {
+      // In Arcade/Sport auto-start on gas; in Simulation mode require explicit Engine Ignition button
+      if (
+        !this.engineRunning &&
+        this.realismMode !== 'simulation' &&
+        input.throttle > 0.08 &&
+        this.fuelLiters > 0.1
+      ) {
         this.engineRunning = true;
       }
     } else {
@@ -314,20 +361,45 @@ export class MasalikVehicleDynamics {
       }
     }
 
-    // 1. Speed-Dependent Smart Steering Response (Section 4)
+    // Cruise Control automatic disengagement on brake/handbrake/reverse/engine-off
+    if (
+      this.cruiseControlEnabled &&
+      (input.brake > 0.08 ||
+        input.handbrake ||
+        !this.engineRunning ||
+        (this.transmissionMode === 'auto' && this.autoShifter !== 'D') ||
+        (this.transmissionMode === 'manual' && this.manualGearIndex <= 0))
+    ) {
+      this.cruiseControlEnabled = false;
+    }
+
+    // Effective throttle combining driver pedal + Cruise Control proportional regulator
+    let effectiveThrottle = input.throttle;
+    if (this.cruiseControlEnabled && this.engineRunning) {
+      const targetMs = this.cruiseTargetKmh / 3.6;
+      const speedErr = targetMs - this.forwardSpeedMs;
+      const cruiseThrottle = THREE.MathUtils.clamp(0.28 + speedErr * 0.24, 0, 0.92);
+      effectiveThrottle = Math.max(input.throttle, cruiseThrottle);
+    }
+
+    // 1. Ultra-Smooth Progressive Speed-Dependent Steering Response
     const speedKmhAbs = Math.abs(this.forwardSpeedMs) * 3.6;
-    // Full steering lock at low speeds (< 22 km/h), progressively stabilized at higher speeds
+    // Full maneuverable lock at city speeds (< 22 km/h), progressively gentler at highway speeds
     const speedDependentMaxSteer =
       this.spec.maxSteerAngleRad *
-      THREE.MathUtils.clamp(1.0 - Math.max(0, speedKmhAbs - 20) / 150, 0.28, 1.0);
+      THREE.MathUtils.clamp(1.0 - Math.max(0, speedKmhAbs - 18) / 145, 0.24, 1.0);
 
     const pullBias =
-      this.realismMode === 'arcade' ? 0 : this.damage.steeringPullBias;
-    const steeringInput = THREE.MathUtils.clamp(input.steer + pullBias, -1, 1);
+      this.realismMode === 'simulation' ? this.damage.steeringPullBias : 0;
+    const rawSteerClamped = THREE.MathUtils.clamp(input.steer + pullBias, -1, 1);
+    // Progressive steering curve prevents nervous twitching on small inputs
+    const progressiveSteer =
+      Math.sign(rawSteerClamped) * Math.pow(Math.abs(rawSteerClamped), 1.22);
+    const steerInputDamping = this.realismMode === 'simulation' ? 11.5 : 8.8;
     this.currentSteerInputNorm = THREE.MathUtils.damp(
       this.currentSteerInputNorm,
-      steeringInput,
-      14,
+      progressiveSteer,
+      steerInputDamping,
       dt
     );
 
@@ -335,7 +407,7 @@ export class MasalikVehicleDynamics {
     this.currentSteerRad = THREE.MathUtils.damp(
       this.currentSteerRad,
       targetSteeringAngle,
-      this.spec.steerSpeedRadPerSec * 2.8,
+      this.spec.steerSpeedRadPerSec * 2.25,
       dt
     );
 
@@ -389,13 +461,13 @@ export class MasalikVehicleDynamics {
       if (wQuery.surface !== 'asphalt' && Math.abs(this.forwardSpeedMs) > 0.5) {
         const amp =
           wQuery.surface === 'rock'
-            ? 0.14
+            ? 0.085
             : wQuery.surface === 'mud' || wQuery.surface === 'gravel'
-            ? 0.09
-            : 0.06;
+            ? 0.055
+            : 0.038;
         const microWave =
-          Math.sin(wx * 3.1 + wz * 2.7 + this.totalDistanceDrivenM * 4.5) * amp;
-        compression = THREE.MathUtils.clamp(compression + microWave, 0.05, 1.0);
+          Math.sin(wx * 2.4 + wz * 2.1 + this.totalDistanceDrivenM * 3.4) * amp;
+        compression = THREE.MathUtils.clamp(compression + microWave, 0.08, 0.96);
       }
 
       const compVelocity = (compression - this.prevCompressions[i]) / dt;
@@ -499,14 +571,14 @@ export class MasalikVehicleDynamics {
         (this.autoShifter === 'N' || this.autoShifter === 'P')) ||
       (this.transmissionMode === 'manual' && this.manualGearIndex === 0);
 
-    if (this.engineRunning && input.throttle > 0.01 && !isNeutralOrPark) {
+    if (this.engineRunning && effectiveThrottle > 0.01 && !isNeutralOrPark) {
       if (isReverseSelected) {
         const revSpeedFactor = Math.max(
           0,
           1.0 - Math.abs(Math.min(0, this.forwardSpeedMs)) / 12.5
         );
         driveForceN -=
-          input.throttle *
+          effectiveThrottle *
           this.spec.maxReverseForceN *
           engineUpgradeMult *
           revSpeedFactor *
@@ -522,7 +594,7 @@ export class MasalikVehicleDynamics {
         const engineHealthFactor = 0.55 + 0.45 * (this.damage.engineHealthPct / 100);
 
         driveForceN =
-          input.throttle *
+          effectiveThrottle *
           baseMaxEngineForceN *
           topSpeedFactor *
           avgGrip *
@@ -534,7 +606,7 @@ export class MasalikVehicleDynamics {
     }
 
     // Engine Braking when throttle is lifted
-    if (input.throttle < 0.05 && Math.abs(this.forwardSpeedMs) > 1.2) {
+    if (effectiveThrottle < 0.05 && Math.abs(this.forwardSpeedMs) > 1.2) {
       const engineBrakeMult = isLowRange ? 3200 : 1150;
       brakingForceN -= Math.sign(this.forwardSpeedMs) * engineBrakeMult;
     }
@@ -625,24 +697,33 @@ export class MasalikVehicleDynamics {
       this.forwardSpeedMs = 0;
     }
 
-    // 6. Turning Kinematics & Lateral Stability (ESC)
+    // 6. Smooth Turning Kinematics & Active Anti-Skid Lateral Stability (ESC)
     if (Math.abs(this.forwardSpeedMs) > 0.08) {
       const turnRadiusInv = Math.tan(this.currentSteerRad) / this.spec.wheelbaseM;
-      const gripTurnEfficiency = THREE.MathUtils.clamp(avgGrip * 0.95, 0.45, 1.08);
+      const gripTurnEfficiency = THREE.MathUtils.clamp(avgGrip * 0.96, 0.58, 1.05);
       const yawRate = this.forwardSpeedMs * turnRadiusInv * gripTurnEfficiency;
       this.headingRad -= yawRate * dt;
 
       const centrifugal = this.forwardSpeedMs * yawRate;
-      const escDamping = this.assists.escEnabled ? 1.38 : 0.85;
-      const slipFactor = input.handbrake ? 0.42 : (1.15 - avgGrip) * 0.22;
+      const escDamping =
+        this.realismMode === 'simulation'
+          ? this.assists.escEnabled
+            ? 1.45
+            : 0.92
+          : this.assists.escEnabled
+          ? 2.15
+          : 1.25;
+      const slipFactor = input.handbrake
+        ? 0.34
+        : Math.max(0.03, (1.08 - avgGrip) * (this.realismMode === 'simulation' ? 0.19 : 0.11));
       this.lateralSpeedMs = THREE.MathUtils.damp(
         this.lateralSpeedMs,
         centrifugal * slipFactor,
-        6.8 * avgGrip * escDamping,
+        8.2 * Math.max(0.65, avgGrip) * escDamping,
         dt
       );
     } else {
-      this.lateralSpeedMs = THREE.MathUtils.damp(this.lateralSpeedMs, 0, 10, dt);
+      this.lateralSpeedMs = THREE.MathUtils.damp(this.lateralSpeedMs, 0, 12, dt);
     }
 
     // 7. Integrate Position & Natural World Boundary Protection (Section 10 & 15)
@@ -665,102 +746,125 @@ export class MasalikVehicleDynamics {
     this.distanceAlongRoadM = updatedQuery.closestSample.distanceM;
     this.lateralOffsetM = updatedQuery.lateralOffsetM;
 
-    const maxSafeLateral = updatedQuery.closestSample.widthM * 0.5 + 2.2;
+    const maxSafeLateral = updatedQuery.closestSample.widthM * 0.5 + 2.35;
     if (Math.abs(this.lateralOffsetM) > maxSafeLateral) {
       const sign = Math.sign(this.lateralOffsetM);
       const excess = Math.abs(this.lateralOffsetM) - maxSafeLateral;
-      this.position.x -= updatedQuery.closestSample.binormal.x * sign * excess * 0.88;
-      this.position.z -= updatedQuery.closestSample.binormal.z * sign * excess * 0.88;
+      this.position.x -= updatedQuery.closestSample.binormal.x * sign * excess * 0.92;
+      this.position.z -= updatedQuery.closestSample.binormal.z * sign * excess * 0.92;
+
+      // Gentle road-edge guardrail slide instead of jarring bounce or spin-out
+      const roadHeading = Math.atan2(
+        updatedQuery.closestSample.tangent.x,
+        -updatedQuery.closestSample.tangent.z
+      );
+      const headingDelta = Math.atan2(
+        Math.sin(roadHeading - this.headingRad),
+        Math.cos(roadHeading - this.headingRad)
+      );
+      this.headingRad += headingDelta * Math.min(1, dt * 3.8);
 
       const impactSpeed = Math.abs(this.forwardSpeedMs);
-      this.forwardSpeedMs *= 0.82;
-      this.lateralSpeedMs = 0;
+      this.forwardSpeedMs *= 0.94;
+      this.lateralSpeedMs *= 0.25;
 
-      if (impactSpeed > 4.5) {
-        const dmgScale = this.realismMode === 'arcade' ? 0.35 : 1.0;
-        const hitLoss = dt * impactSpeed * 1.4 * dmgScale;
-        this.damage.bodyHealthPct = Math.max(20, this.damage.bodyHealthPct - hitLoss);
+      if (impactSpeed > 7.5) {
+        const dmgScale =
+          this.realismMode === 'arcade'
+            ? 0.15
+            : this.realismMode === 'sport'
+            ? 0.35
+            : 0.85;
+        const hitLoss = dt * (impactSpeed - 4.0) * 0.85 * dmgScale;
+        this.damage.bodyHealthPct = Math.max(30, this.damage.bodyHealthPct - hitLoss);
         this.damage.engineHealthPct = Math.max(
-          35,
-          this.damage.engineHealthPct - hitLoss * 0.5
+          45,
+          this.damage.engineHealthPct - hitLoss * 0.35
         );
         this.damage.suspensionHealthPct = Math.max(
-          30,
-          this.damage.suspensionHealthPct - hitLoss * 0.7
+          45,
+          this.damage.suspensionHealthPct - hitLoss * 0.45
         );
         if (cargoMassKg > 0) {
           this.damage.cargoIntegrityPct = Math.max(
-            0,
-            this.damage.cargoIntegrityPct - hitLoss * 1.2
+            10,
+            this.damage.cargoIntegrityPct - hitLoss * 0.75
           );
         }
         this.damage.steeringPullBias = THREE.MathUtils.clamp(
-          ((100 - this.damage.suspensionHealthPct) / 100) * 0.08 * sign,
-          -0.08,
-          0.08
+          ((100 - this.damage.suspensionHealthPct) / 100) * 0.04 * sign,
+          -0.04,
+          0.04
         );
       }
     }
 
     if (
       updatedQuery.surface === 'rock' &&
-      speedKmhAbs > 52 &&
+      speedKmhAbs > 62 &&
       this.spec.suspensionRestLengthM < 0.52
     ) {
       this.damage.suspensionHealthPct = Math.max(
-        35,
-        this.damage.suspensionHealthPct - dt * 2.5
+        45,
+        this.damage.suspensionHealthPct - dt * 1.4
       );
       this.damage.tiresHealthPct = Math.max(
-        40,
-        this.damage.tiresHealthPct - dt * 1.8
+        50,
+        this.damage.tiresHealthPct - dt * 1.1
       );
     }
 
-    // Vertical terrain following (never falls through terrain)
+    // Ultra-smooth vertical terrain following & anti-rollover ground alignment
     const targetY = updatedQuery.groundHeightY;
-    this.position.y = THREE.MathUtils.damp(this.position.y, targetY, 18, dt);
-    this.alignQuaternionToGround(updatedQuery.groundNormal, Math.min(1, dt * 10));
+    this.position.y = THREE.MathUtils.damp(this.position.y, targetY, 14, dt);
+    this.alignQuaternionToGround(updatedQuery.groundNormal, Math.min(1, dt * 8.2));
 
-    // 8. Pitch & Roll with Cargo Center-of-Mass Effect
-    const cargoComPenalty = 1.0 + (cargoMassKg / 2000) * 0.38;
+    // 8. Active Anti-Rollover Stabilized Pitch & Roll
+    const cargoComPenalty = 1.0 + (cargoMassKg / 2600) * 0.24;
+    const maxPitchRad = this.realismMode === 'simulation' ? 0.072 : 0.052;
+    const maxRollRad = this.realismMode === 'simulation' ? 0.095 : 0.068;
+
     const targetPitch = THREE.MathUtils.clamp(
-      -longitudinalAccel * 0.013 * cargoComPenalty,
-      -0.085,
-      0.085
+      -longitudinalAccel * 0.0085 * cargoComPenalty,
+      -maxPitchRad,
+      maxPitchRad
     );
     const centrifugalAccel =
       (this.forwardSpeedMs * this.forwardSpeedMs * Math.tan(this.currentSteerRad)) /
       this.spec.wheelbaseM;
     const rollCompliance =
-      (9500 / Math.max(4000, this.spec.antiRollStiffness * suspUpgradeMult)) *
+      (8200 / Math.max(5500, this.spec.antiRollStiffness * suspUpgradeMult)) *
       cargoComPenalty;
+    const antiRollDamp = this.realismMode === 'simulation' ? 0.0072 : 0.0048;
     const targetRoll = THREE.MathUtils.clamp(
-      centrifugalAccel * 0.011 * rollCompliance,
-      -0.13,
-      0.13
+      centrifugalAccel * antiRollDamp * rollCompliance,
+      -maxRollRad,
+      maxRollRad
     );
 
     this.chassisPitchRad = THREE.MathUtils.damp(
       this.chassisPitchRad,
       targetPitch,
-      10,
+      8.5,
       dt
     );
     this.chassisRollRad = THREE.MathUtils.damp(
       this.chassisRollRad,
       targetRoll,
-      9,
+      8.0,
       dt
     );
 
-    // 9. Fuel Consumption & Real-Time Dirt/Mud Accumulation
+    // 9. Realistic Slow Touring Fuel Economy & Real-Time Dirt/Mud Accumulation
     if (this.engineRunning && this.realismMode !== 'arcade') {
-      const climbPenalty = Math.max(0, effectiveGradeSin * 4.5);
-      const cargoFuelPenalty = 1.0 + cargoMassKg / 3500;
+      const touringEfficiencyMult =
+        this.realismMode === 'simulation' ? 0.42 : 0.3;
+      const climbPenalty = Math.max(0, effectiveGradeSin * 1.85);
+      const cargoFuelPenalty = 1.0 + cargoMassKg / 5200;
       const burnRateLPerSec =
         (this.spec.baseFuelBurnLPerMin / 60) *
-        (0.25 + input.throttle * 1.35 + climbPenalty) *
+        touringEfficiencyMult *
+        (0.16 + effectiveThrottle * 0.92 + climbPenalty) *
         cargoFuelPenalty;
       this.fuelLiters = Math.max(0, this.fuelLiters - burnRateLPerSec * dt);
     }
@@ -894,7 +998,10 @@ export class MasalikVehicleDynamics {
       wipersOn: autoWipers,
       leftIndicatorOn: this.leftIndicatorOn,
       rightIndicatorOn: this.rightIndicatorOn,
-      throttle: input.throttle,
+      cruiseControlEnabled: this.cruiseControlEnabled,
+      cruiseTargetKmh: this.cruiseTargetKmh,
+      realismMode: this.realismMode,
+      throttle: effectiveThrottle,
       brake: input.brake,
       clutch: input.clutch ?? 0,
       handbrake: input.handbrake,

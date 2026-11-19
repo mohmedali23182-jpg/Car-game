@@ -3,15 +3,27 @@ import * as THREE from 'three';
 import {
   CameraMode,
   DrivetrainMode,
+  DrivingRealismMode,
   MissionDefinition,
+  RadioStationId,
   SaveGameSchemaV2,
   VehicleTelemetry,
   VehicleId,
   AutomaticShifterState,
   EffectiveGraphicsQuality,
+  YemenCityHub,
+  NearbyTrafficSignalInfo,
+  TimeOfDayPreset,
+  WeatherPreset,
 } from './game/types';
 import { MasalikVehicleDynamics } from './game/physicsEngine';
-import { buildHighlandWorld, HighlandWorld } from './game/worldBuilder';
+import {
+  buildHighlandWorld,
+  HighlandWorld,
+  formatWorldTimeHours,
+  presetToWorldTimeHours,
+  worldTimeHoursToPreset,
+} from './game/worldBuilder';
 import { createMaterialLibrary } from './game/materials';
 import {
   createFleetVehicleVisuals,
@@ -19,6 +31,7 @@ import {
   VEHICLE_SPECS,
 } from './game/vehicleFleet';
 import { MasalikAudioEngine } from './game/audioEngine';
+import { YemeniLofiRadioEngine } from './game/yemeniLofiRadioEngine';
 import { PersistenceManager } from './game/persistenceManager';
 import { WORLD_POIS, mountainRoad } from './game/roadSpline';
 import { ALL_OFFLINE_MISSIONS, getDriverRankTitleAr } from './game/missionsCatalog';
@@ -27,6 +40,9 @@ import { ControlStudioModal } from './components/ControlStudioModal';
 import { GarageShowroomModal } from './components/GarageShowroomModal';
 import { MissionsAndStoryModal } from './components/MissionsAndStoryModal';
 import { SettingsAndSaveModal } from './components/SettingsAndSaveModal';
+import { YemeniRadioPlayer } from './components/YemeniRadioPlayer';
+import { MainMenuLobby } from './components/MainMenuLobby';
+import { YemenWorldMapModal } from './components/YemenWorldMapModal';
 import {
   Pause,
   Play,
@@ -47,6 +63,16 @@ import {
   Download,
   Volume2,
   VolumeX,
+  Radio,
+  MapPin,
+  Power,
+  Gauge,
+  Home,
+  Sun,
+  Sunset,
+  Moon,
+  CloudRain,
+  RefreshCw,
 } from 'lucide-react';
 
 const CAMERA_LABELS_AR: Record<CameraMode, string> = {
@@ -75,6 +101,7 @@ export default function App() {
   const vehicleVisualsRef = useRef<FleetVehicleVisuals | null>(null);
   const physicsRef = useRef<MasalikVehicleDynamics | null>(null);
   const audioRef = useRef<MasalikAudioEngine | null>(null);
+  const radioRef = useRef<YemeniLofiRadioEngine | null>(null);
 
   const [saveState, setSaveState] = useState<SaveGameSchemaV2>(() =>
     PersistenceManager.load()
@@ -83,10 +110,23 @@ export default function App() {
   saveStateRef.current = saveState;
 
   const [activeModal, setActiveModal] = useState<
-    'none' | 'pause' | 'garage' | 'missions' | 'control_studio' | 'settings' | 'photo'
-  >('none');
+    | 'menu'
+    | 'none'
+    | 'pause'
+    | 'world_map'
+    | 'garage'
+    | 'missions'
+    | 'control_studio'
+    | 'settings'
+    | 'photo'
+  >('menu');
   const activeModalRef = useRef(activeModal);
   activeModalRef.current = activeModal;
+
+  const [radioOpen, setRadioOpen] = useState<boolean>(
+    () => saveState.radioSettings?.isOpen ?? false
+  );
+  const [radioPlaying, setRadioPlaying] = useState<boolean>(false);
 
   const [cameraMode, setCameraMode] = useState<CameraMode>('chase_near');
   const cameraModeRef = useRef<CameraMode>(cameraMode);
@@ -112,10 +152,19 @@ export default function App() {
     'none' | 'warm' | 'golden' | 'dramatic'
   >('none');
   const [photoFov, setPhotoFov] = useState<number>(58);
+  const photoFovRef = useRef<number>(photoFov);
+  photoFovRef.current = photoFov;
 
   const [minimapExpanded, setMinimapExpanded] = useState<boolean>(false);
   const [toolsExpanded, setToolsExpanded] = useState<boolean>(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [blinkerPhase, setBlinkerPhase] = useState<boolean>(false);
+
+  const tripStatsRef = useRef({
+    startDistanceM: 0,
+    maxSpeedKmh: 0,
+    startTimeMs: Date.now(),
+  });
 
   const touchInputsRef = useRef({
     steerNorm: 0,
@@ -131,6 +180,22 @@ export default function App() {
   const [throttleUiPct, setThrottleUiPct] = useState<number>(0);
   const [brakeUiPct, setBrakeUiPct] = useState<number>(0);
   const [fpsCount, setFpsCount] = useState<number>(60);
+
+  // Continuous 24h Day/Night Cycle & Live Traffic Signal HUD State
+  const worldTimeHoursRef = useRef<number>(
+    typeof saveState.worldTimeHours === 'number'
+      ? saveState.worldTimeHours
+      : presetToWorldTimeHours(saveState.timeOfDay)
+  );
+  const manualHeadlightOverrideRef = useRef<boolean>(false);
+  const [displayClockStr, setDisplayClockStr] = useState<string>(() =>
+    formatWorldTimeHours(worldTimeHoursRef.current)
+  );
+  const [activePhaseLabel, setActivePhaseLabel] = useState<TimeOfDayPreset>(
+    () => worldTimeHoursToPreset(worldTimeHoursRef.current)
+  );
+  const [nearbyTrafficSignal, setNearbyTrafficSignal] =
+    useState<NearbyTrafficSignalInfo | null>(null);
 
   const gasPointerIdRef = useRef<number | null>(null);
   const brakePointerIdRef = useRef<number | null>(null);
@@ -235,8 +300,11 @@ export default function App() {
     physics.selectVehicle(vid, custom);
     physics.wheelRotationRangeDeg = initialSave.hudSettings.smartWheel.rotationRangeDeg;
     physics.weather = initialSave.weather;
+    physics.realismMode = initialSave.drivingRealism;
 
-    if (activeMissionRef.current) {
+    if (initialSave.playerDistanceM > 40) {
+      physics.resetToRoad(initialSave.playerDistanceM);
+    } else if (activeMissionRef.current) {
       physics.resetToRoad(activeMissionRef.current.startDistanceM);
       missionElapsedRef.current = 0;
     }
@@ -244,12 +312,19 @@ export default function App() {
     const audio = new MasalikAudioEngine();
     audio.setMixer(initialSave.audioMixer);
 
+    const radio = new YemeniLofiRadioEngine();
+    radio.setStation(initialSave.radioSettings?.stationId || 'taiz_oud_lofi');
+    radio.setVolume(initialSave.radioSettings?.volume ?? 0.65);
+    radio.setVinylEnabled(initialSave.radioSettings?.lofiVinylEnabled ?? true);
+    radio.setGlobalMuted(initialSave.audioMixer.muted);
+
     rendererRef.current = renderer;
     cameraRef.current = camera;
     worldRef.current = world;
     vehicleVisualsRef.current = vehicleVisuals;
     physicsRef.current = physics;
     audioRef.current = audio;
+    radioRef.current = radio;
 
     const handleResize = () => {
       if (!mountRef.current || !rendererRef.current || !cameraRef.current) return;
@@ -265,11 +340,24 @@ export default function App() {
       keyStateRef.current[e.code] = true;
       audio.init();
       if (e.code === 'Escape') {
-        setActiveModal((m) => (m === 'none' ? 'pause' : 'none'));
+        setActiveModal((m) =>
+          m === 'none' ? 'pause' : m === 'menu' ? 'menu' : 'none'
+        );
       } else if (e.code === 'KeyR') {
         physics.resetToRoad();
       } else if (e.code === 'KeyH') {
         audio.playHorn(true, physics.vehicleId);
+      } else if (e.code === 'KeyC') {
+        physics.toggleCruiseControl();
+      } else if (e.code === 'KeyI') {
+        const on = physics.toggleEngineIgnition();
+        audio.playEngineStarterSound(on);
+      } else if (e.code === 'KeyQ') {
+        physics.leftIndicatorOn = !physics.leftIndicatorOn;
+        if (physics.leftIndicatorOn) physics.rightIndicatorOn = false;
+      } else if (e.code === 'KeyE') {
+        physics.rightIndicatorOn = !physics.rightIndicatorOn;
+        if (physics.rightIndicatorOn) physics.leftIndicatorOn = false;
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -304,7 +392,9 @@ export default function App() {
 
       const modal = activeModalRef.current;
       const isPaused =
+        modal === 'menu' ||
         modal === 'pause' ||
+        modal === 'world_map' ||
         modal === 'missions' ||
         modal === 'control_studio' ||
         modal === 'settings';
@@ -350,6 +440,11 @@ export default function App() {
       let snap: VehicleTelemetry;
       if (!isPaused && modal !== 'garage' && modal !== 'photo') {
         snap = physics.step(dt, { throttle, brake, steer, handbrake });
+
+        // Track session top speed for Phone Database trip log
+        if (snap.speedKmh > tripStatsRef.current.maxSpeedKmh) {
+          tripStatsRef.current.maxSpeedKmh = snap.speedKmh;
+        }
 
         // Detect sharp impact deceleration for collision audio
         const decelMs = prevSpeedMs - snap.forwardSpeedMs;
@@ -401,13 +496,30 @@ export default function App() {
       }
 
       const curSave = saveStateRef.current;
-      const skyHex = world.applyAtmosphere(
-        curSave.timeOfDay,
+
+      // Advance continuous 24h Day/Night Cycle smoothly when active
+      if (curSave.autoTimeCycleEnabled && !isPaused) {
+        worldTimeHoursRef.current = (worldTimeHoursRef.current + dt * 0.16) % 24;
+      }
+
+      const atmResult = world.applyAtmosphere(
+        worldTimeHoursRef.current,
         curSave.weather,
         scene,
         sunLight,
         hemiLight
       );
+      const skyHex = atmResult.skyHex;
+
+      // Intelligent automatic headlights at dusk, night, rain, fog, or tunnels
+      if (!manualHeadlightOverrideRef.current) {
+        const shouldLight =
+          atmResult.nightFactor > 0.4 ||
+          curSave.weather === 'heavy_rain' ||
+          curSave.weather === 'mountain_fog' ||
+          snap.inTunnel;
+        physics.headlightsOn = shouldLight;
+      }
 
       const finishDist = activeMissionRef.current
         ? activeMissionRef.current.finishDistanceM
@@ -439,7 +551,7 @@ export default function App() {
         THREE.MathUtils.degToRad(snap.steeringAngleDeg),
         brake > 0.1,
         snap.autoShifter === 'R' || snap.forwardSpeedMs < -0.5,
-        snap.headlightsOn,
+        physics.headlightsOn,
         snap.wipersOn,
         snap.leftIndicatorOn,
         snap.rightIndicatorOn,
@@ -455,29 +567,33 @@ export default function App() {
         snap.wheels
       );
 
-      // Update Sun Shadow Target to follow player
+      // Update Sun Shadow Target to follow player with 24h sun arc offset
+      const sunAngleRad = ((worldTimeHoursRef.current - 6) / 12) * Math.PI;
       sunLight.position.set(
-        physics.position.x + 85,
-        physics.position.y + 140,
+        physics.position.x + Math.cos(sunAngleRad) * 95,
+        physics.position.y + Math.max(48, Math.sin(sunAngleRad) * 155),
         physics.position.z + 65
       );
       sunLight.target.position.copy(physics.position);
 
-      // Camera Positioning
+      // Ultra-Smooth Camera Positioning & Dynamic Speed-Reactive FOV
       const cMode = cameraModeRef.current;
-      if (modal === 'garage' || cMode === 'free_photo') {
-        showroomOrbitRadRef.current += dt * (modal === 'garage' ? 0.22 : 0.12);
-        const dist = 6.2;
+      let desiredFov = 58;
+      if (modal === 'garage' || modal === 'menu' || cMode === 'free_photo') {
+        showroomOrbitRadRef.current +=
+          dt * (modal === 'garage' ? 0.22 : modal === 'menu' ? 0.14 : 0.12);
+        const dist = modal === 'menu' ? 7.2 : 6.2;
         camera.position.set(
           physics.position.x + Math.cos(showroomOrbitRadRef.current) * dist,
-          physics.position.y + 2.15,
+          physics.position.y + (modal === 'menu' ? 2.45 : 2.15),
           physics.position.z + Math.sin(showroomOrbitRadRef.current) * dist
         );
         camera.lookAt(
           physics.position.x,
-          physics.position.y + 0.9,
+          physics.position.y + 0.95,
           physics.position.z
         );
+        desiredFov = modal === 'photo' ? photoFovRef.current : 56;
       } else if (cMode === 'cockpit') {
         vehicleVisuals.cockpitCameraAnchor.getWorldPosition(worldAnchorPos);
         camera.position.copy(worldAnchorPos);
@@ -486,6 +602,7 @@ export default function App() {
         );
         camLookTarget.copy(worldAnchorPos).add(forwardVec);
         camera.lookAt(camLookTarget);
+        desiredFov = curSave.hudSettings.cockpitFovDeg || 62;
       } else if (cMode === 'hood') {
         vehicleVisuals.hoodCameraAnchor.getWorldPosition(worldAnchorPos);
         camera.position.copy(worldAnchorPos);
@@ -494,22 +611,41 @@ export default function App() {
         );
         camLookTarget.copy(worldAnchorPos).add(forwardVec);
         camera.lookAt(camLookTarget);
+        desiredFov = 58 + Math.min(7, snap.speedKmh * 0.06);
       } else {
         const isFar = cMode === 'chase_far';
         const isFront = cMode === 'cinematic_front';
+        const speedPullback = Math.min(1.15, snap.speedKmh * 0.011);
+        const steerLateralShift = -snap.steeringInputNorm * 0.55;
         const offsetVec = new THREE.Vector3(
-          0,
-          isFar ? 3.5 : 2.55,
-          isFront ? -6.8 : isFar ? 8.6 : 6.4
+          steerLateralShift,
+          isFar ? 3.45 : 2.55,
+          isFront ? -6.8 : (isFar ? 8.5 : 6.35) + speedPullback
         ).applyQuaternion(physics.quaternion);
         desiredCamPos.copy(physics.position).add(offsetVec);
-        camera.position.lerp(desiredCamPos, Math.min(1, dt * 8.5));
-        camLookTarget.set(
-          physics.position.x,
-          physics.position.y + 1.15,
-          physics.position.z
-        );
+        camera.position.x = THREE.MathUtils.damp(camera.position.x, desiredCamPos.x, 7.2, dt);
+        camera.position.y = THREE.MathUtils.damp(camera.position.y, desiredCamPos.y, 6.8, dt);
+        camera.position.z = THREE.MathUtils.damp(camera.position.z, desiredCamPos.z, 7.2, dt);
+
+        const lookAheadVec = new THREE.Vector3(
+          -snap.steeringInputNorm * 0.9,
+          1.18,
+          isFront ? 2.0 : -4.2
+        ).applyQuaternion(physics.quaternion);
+        const targetX = physics.position.x + lookAheadVec.x;
+        const targetY = physics.position.y + lookAheadVec.y;
+        const targetZ = physics.position.z + lookAheadVec.z;
+        camLookTarget.x = THREE.MathUtils.damp(camLookTarget.x, targetX, 9.5, dt);
+        camLookTarget.y = THREE.MathUtils.damp(camLookTarget.y, targetY, 9.5, dt);
+        camLookTarget.z = THREE.MathUtils.damp(camLookTarget.z, targetZ, 9.5, dt);
         camera.lookAt(camLookTarget);
+        desiredFov = 56 + Math.min(9.5, snap.speedKmh * 0.085);
+      }
+
+      const nextFov = THREE.MathUtils.damp(camera.fov, desiredFov, 4.5, dt);
+      if (Math.abs(nextFov - camera.fov) > 0.06) {
+        camera.fov = nextFov;
+        camera.updateProjectionMatrix();
       }
 
       // Update Procedural Audio
@@ -537,9 +673,12 @@ export default function App() {
 
       if (now - uiSyncTimer > 55) {
         uiSyncTimer = now;
-        setTelemetry(snap);
+        setTelemetry({ ...snap, headlightsOn: physics.headlightsOn });
         setThrottleUiPct(Math.round(throttle * 100));
         setBrakeUiPct(Math.round(brake * 100));
+        setDisplayClockStr(formatWorldTimeHours(worldTimeHoursRef.current));
+        setActivePhaseLabel(worldTimeHoursToPreset(worldTimeHoursRef.current));
+        setNearbyTrafficSignal(worldStep.nearbyTrafficSignal);
         if (activeMissionRef.current) {
           setMissionTimeRemaining(
             Math.max(
@@ -565,6 +704,7 @@ export default function App() {
       world.dispose();
       vehicleVisuals.dispose();
       materials.dispose();
+      radio.dispose();
       renderer.dispose();
     };
   }, [updateAndSave]);
@@ -574,9 +714,17 @@ export default function App() {
       physicsRef.current.wheelRotationRangeDeg =
         saveState.hudSettings.smartWheel.rotationRangeDeg;
       physicsRef.current.weather = saveState.weather;
+      physicsRef.current.realismMode = saveState.drivingRealism;
     }
     if (audioRef.current) {
       audioRef.current.setMixer(saveState.audioMixer);
+    }
+    if (radioRef.current) {
+      radioRef.current.setGlobalMuted(saveState.audioMixer.muted);
+      radioRef.current.setVolume(saveState.radioSettings?.volume ?? 0.65);
+      radioRef.current.setVinylEnabled(
+        saveState.radioSettings?.lofiVinylEnabled ?? true
+      );
     }
     if (worldRef.current) {
       const q: EffectiveGraphicsQuality =
@@ -584,6 +732,196 @@ export default function App() {
       worldRef.current.applyQuality(q);
     }
   }, [saveState]);
+
+  // Turn Signal / Hazard synchronized relay click & dashboard blinker flash
+  useEffect(() => {
+    const anyIndicator = Boolean(
+      telemetry && (telemetry.leftIndicatorOn || telemetry.rightIndicatorOn)
+    );
+    if (!anyIndicator || activeModal !== 'none') {
+      setBlinkerPhase(false);
+      return;
+    }
+    let high = true;
+    setBlinkerPhase(true);
+    audioRef.current?.playBlinkerTick(true);
+    const id = window.setInterval(() => {
+      high = !high;
+      setBlinkerPhase(high);
+      audioRef.current?.playBlinkerTick(high);
+    }, 440);
+    return () => window.clearInterval(id);
+  }, [telemetry?.leftIndicatorOn, telemetry?.rightIndicatorOn, activeModal]);
+
+  const flushSessionTripToPhoneDb = useCallback(() => {
+    const snap = telemetry;
+    if (!snap) return;
+    const drivenM = Math.max(
+      0,
+      snap.totalDistanceDrivenM - tripStatsRef.current.startDistanceM
+    );
+    if (drivenM >= 100) {
+      const durationSec = Math.max(
+        1,
+        Math.round((Date.now() - tripStatsRef.current.startTimeMs) / 1000)
+      );
+      PersistenceManager.recordTrip({
+        timestampIso: new Date().toISOString(),
+        vehicleId: snap.vehicleId,
+        regionId: snap.regionId,
+        regionNameAr: snap.regionNameAr,
+        distanceKm: Math.round((drivenM / 1000) * 100) / 100,
+        maxSpeedKmh: tripStatsRef.current.maxSpeedKmh,
+        durationSec,
+      });
+      updateAndSave((prev) => ({
+        ...prev,
+        playerDistanceM: snap.distanceAlongRoadM,
+        lastRegionId: snap.regionId,
+        totalCareerDistanceM: prev.totalCareerDistanceM + Math.round(drivenM),
+      }));
+      tripStatsRef.current = {
+        startDistanceM: snap.totalDistanceDrivenM,
+        maxSpeedKmh: 0,
+        startTimeMs: Date.now(),
+      };
+    }
+  }, [telemetry, updateAndSave]);
+
+  const handleToggleRadioPlay = useCallback(() => {
+    audioRef.current?.init();
+    if (!radioRef.current) return;
+    const nowPlaying = radioRef.current.toggle();
+    setRadioPlaying(nowPlaying);
+    audioRef.current?.setRadioPlayingOverride(nowPlaying);
+    updateAndSave((prev) => ({
+      ...prev,
+      radioSettings: {
+        ...prev.radioSettings,
+        isPlaying: nowPlaying,
+      },
+    }));
+  }, [updateAndSave]);
+
+  const handleToggleRadioWidget = useCallback(() => {
+    audioRef.current?.init();
+    audioRef.current?.playUiClick(1.15);
+    setRadioOpen((prevOpen) => {
+      const nextOpen = !prevOpen;
+      if (nextOpen && radioRef.current && !radioRef.current.getIsPlaying()) {
+        radioRef.current.start();
+        setRadioPlaying(true);
+        audioRef.current?.setRadioPlayingOverride(true);
+      }
+      updateAndSave((prev) => ({
+        ...prev,
+        radioSettings: {
+          ...prev.radioSettings,
+          isOpen: nextOpen,
+          isPlaying: nextOpen ? true : prev.radioSettings.isPlaying,
+        },
+      }));
+      return nextOpen;
+    });
+  }, [updateAndSave]);
+
+  const handleSelectRadioStation = useCallback(
+    (id: RadioStationId) => {
+      audioRef.current?.init();
+      radioRef.current?.setStation(id);
+      if (radioRef.current && !radioRef.current.getIsPlaying()) {
+        radioRef.current.start();
+        setRadioPlaying(true);
+        audioRef.current?.setRadioPlayingOverride(true);
+      }
+      updateAndSave((prev) => ({
+        ...prev,
+        radioSettings: {
+          ...prev.radioSettings,
+          stationId: id,
+          isPlaying: true,
+        },
+      }));
+    },
+    [updateAndSave]
+  );
+
+  const handleFastTravelToCity = useCallback(
+    (city: YemenCityHub) => {
+      audioRef.current?.init();
+      audioRef.current?.playUiClick(1.25);
+      flushSessionTripToPhoneDb();
+      setActiveMission(null);
+      activeMissionRef.current = null;
+      physicsRef.current?.resetToRoad(city.distanceM);
+
+      const targetHours = presetToWorldTimeHours(city.defaultTimeOfDay);
+      worldTimeHoursRef.current = targetHours;
+      manualHeadlightOverrideRef.current = false;
+
+      updateAndSave((prev) => ({
+        ...prev,
+        playerDistanceM: city.distanceM,
+        lastRegionId: city.regionId,
+        weather: city.defaultWeather,
+        timeOfDay: city.defaultTimeOfDay,
+        worldTimeHours: targetHours,
+        visitedCities: Array.from(new Set([...(prev.visitedCities || []), city.id])),
+      }));
+
+      setActiveModal('none');
+      setMissionBannerAr(
+        `مرحبًا بك في ${city.nameAr} — ارتفاع ${city.altitudeM}م (${city.governorateAr})`
+      );
+      setTimeout(() => setMissionBannerAr(null), 4200);
+    },
+    [flushSessionTripToPhoneDb, updateAndSave]
+  );
+
+  const handleQuickJumpTimeOfDay = useCallback(
+    (preset: TimeOfDayPreset) => {
+      audioRef.current?.init();
+      audioRef.current?.playUiClick(1.15);
+      const hrs = presetToWorldTimeHours(preset);
+      worldTimeHoursRef.current = hrs;
+      manualHeadlightOverrideRef.current = false;
+      setDisplayClockStr(formatWorldTimeHours(hrs));
+      setActivePhaseLabel(preset);
+      updateAndSave((prev) => ({
+        ...prev,
+        timeOfDay: preset,
+        worldTimeHours: hrs,
+      }));
+    },
+    [updateAndSave]
+  );
+
+  const handleToggleAutoTimeCycle = useCallback(() => {
+    audioRef.current?.init();
+    audioRef.current?.playUiClick(1.1);
+    updateAndSave((prev) => ({
+      ...prev,
+      autoTimeCycleEnabled: !prev.autoTimeCycleEnabled,
+      worldTimeHours: worldTimeHoursRef.current,
+    }));
+  }, [updateAndSave]);
+
+  const handleQuickCycleWeather = useCallback(() => {
+    audioRef.current?.init();
+    audioRef.current?.playUiClick(1.1);
+    const weatherOrder: WeatherPreset[] = [
+      'clear',
+      'cloudy',
+      'light_rain',
+      'mountain_fog',
+      'sandstorm',
+    ];
+    updateAndSave((prev) => {
+      const idx = weatherOrder.indexOf(prev.weather);
+      const next = weatherOrder[(idx + 1) % weatherOrder.length];
+      return { ...prev, weather: next };
+    });
+  }, [updateAndSave]);
 
   const cycleCameraMode = () => {
     audioRef.current?.init();
@@ -629,11 +967,16 @@ export default function App() {
     );
     vehicleVisualsRef.current?.rebuildForVehicle(vid, custom);
 
+    const missionHours = presetToWorldTimeHours(mission.timeOfDayPreset);
+    worldTimeHoursRef.current = missionHours;
+    manualHeadlightOverrideRef.current = false;
+
     updateAndSave((prev) => ({
       ...prev,
       selectedVehicleId: vid,
       weather: mission.weatherPreset,
       timeOfDay: mission.timeOfDayPreset,
+      worldTimeHours: missionHours,
     }));
 
     setActiveModal('none');
@@ -871,10 +1214,23 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   audioRef.current?.playUiClick();
+                  setActiveModal('world_map');
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-950/85 border border-stone-700/70 text-[11px] font-bold text-emerald-300 hover:border-emerald-400 flex items-center gap-1 shadow-lg whitespace-nowrap shrink-0"
+                title="خريطة مدن وطرق اليمن المفتوحة"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">مدن اليمن (10)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  audioRef.current?.playUiClick();
                   setPreviewVehicleId(saveState.selectedVehicleId);
                   setActiveModal('garage');
                 }}
-                className="px-2.5 py-1.5 rounded-xl bg-slate-950/75 border border-stone-700/70 backdrop-blur-md text-[11px] font-bold text-amber-300 hover:border-amber-400 flex items-center gap-1 shadow-lg"
+                className="px-2.5 py-1.5 rounded-xl bg-slate-950/85 border border-stone-700/70 text-[11px] font-bold text-amber-300 hover:border-amber-400 flex items-center gap-1 shadow-lg whitespace-nowrap shrink-0"
                 title="معرض المركبات والورشة"
               >
                 <Car className="w-3.5 h-3.5" />
@@ -887,7 +1243,7 @@ export default function App() {
                   audioRef.current?.playUiClick();
                   setActiveModal('missions');
                 }}
-                className="px-2.5 py-1.5 rounded-xl bg-slate-950/75 border border-stone-700/70 backdrop-blur-md text-[11px] font-bold text-stone-200 hover:border-amber-400 flex items-center gap-1 shadow-lg"
+                className="px-2.5 py-1.5 rounded-xl bg-slate-950/85 border border-stone-700/70 text-[11px] font-bold text-stone-200 hover:border-amber-400 flex items-center gap-1 shadow-lg whitespace-nowrap shrink-0"
                 title="المهمات وفصول القصة"
               >
                 <Flag className="w-3.5 h-3.5 text-emerald-400" />
@@ -900,7 +1256,7 @@ export default function App() {
                   audioRef.current?.playUiClick();
                   setActiveModal('control_studio');
                 }}
-                className="p-1.5 rounded-xl bg-slate-950/75 border border-stone-700/70 backdrop-blur-md text-stone-200 hover:border-amber-400 shadow-lg"
+                className="p-1.5 rounded-xl bg-slate-950/85 border border-stone-700/70 text-stone-200 hover:border-amber-400 shadow-lg shrink-0"
                 title="تخصيص أماكن وأحجام أدوات القيادة"
               >
                 <Sliders className="w-4 h-4 text-amber-400" />
@@ -909,10 +1265,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setToolsExpanded((v) => !v)}
-                className={`px-2.5 py-1.5 rounded-xl border backdrop-blur-md text-[11px] font-bold shadow-lg ${
+                className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold shadow-lg whitespace-nowrap shrink-0 ${
                   toolsExpanded
                     ? 'bg-amber-500 text-slate-950 border-amber-300'
-                    : 'bg-slate-950/75 text-stone-200 border-stone-700/70'
+                    : 'bg-slate-950/85 text-stone-200 border-stone-700/70'
                 }`}
               >
                 أدوات ▾
@@ -920,43 +1276,315 @@ export default function App() {
             </div>
           )}
 
-          {/* Secondary Collapsible Tools Drawer */}
+          {/* 2B. QUICK ON-HUD 24H DAY/NIGHT & WEATHER SWITCHER + UPCOMING TRAFFIC SIGNAL */}
+          {!toolsExpanded && (
+            <div
+              dir="rtl"
+              className="fixed top-[54px] left-1/2 -translate-x-1/2 pointer-events-auto flex flex-col items-center gap-1.5 z-20"
+            >
+              <div className="px-2.5 py-1 rounded-xl bg-slate-950/78 border border-stone-700/70 backdrop-blur-md flex items-center gap-1.5 shadow-lg">
+                <div className="flex items-center gap-1 pl-1.5 border-l border-stone-700/80 text-[11px] font-mono-num tabular-nums font-bold text-amber-300">
+                  {activePhaseLabel === 'night' || activePhaseLabel === 'dawn' ? (
+                    <Moon className="w-3.5 h-3.5 text-sky-300" />
+                  ) : activePhaseLabel === 'sunset' || activePhaseLabel === 'sunrise' ? (
+                    <Sunset className="w-3.5 h-3.5 text-orange-400" />
+                  ) : (
+                    <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  )}
+                  <span>{displayClockStr}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleToggleAutoTimeCycle}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition whitespace-nowrap ${
+                    saveState.autoTimeCycleEnabled
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50'
+                      : 'text-stone-400 hover:text-stone-200 border border-transparent'
+                  }`}
+                  title="تشغيل/إيقاف دورة النهار والليل التلقائية"
+                >
+                  <RefreshCw className="w-2.5 h-2.5" />
+                  تلقائي
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickJumpTimeOfDay('morning')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition whitespace-nowrap ${
+                    activePhaseLabel === 'morning' || activePhaseLabel === 'noon' || activePhaseLabel === 'afternoon'
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-stone-300 hover:bg-stone-800'
+                  }`}
+                >
+                  نهار
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickJumpTimeOfDay('sunset')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition whitespace-nowrap ${
+                    activePhaseLabel === 'sunset' || activePhaseLabel === 'sunrise'
+                      ? 'bg-orange-500 text-slate-950'
+                      : 'text-stone-300 hover:bg-stone-800'
+                  }`}
+                >
+                  غروب
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickJumpTimeOfDay('night')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition whitespace-nowrap ${
+                    activePhaseLabel === 'night' || activePhaseLabel === 'dawn'
+                      ? 'bg-sky-500 text-slate-950'
+                      : 'text-stone-300 hover:bg-stone-800'
+                  }`}
+                >
+                  ليل
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleQuickCycleWeather}
+                  className="px-2 py-0.5 rounded-lg text-[10px] font-bold text-stone-300 hover:bg-stone-800 flex items-center gap-1 border-r border-stone-700/80 pr-2 whitespace-nowrap"
+                  title="تبديل سريع للطقس"
+                >
+                  <CloudRain className="w-3 h-3 text-sky-400" />
+                  {saveState.weather === 'clear'
+                    ? 'صافي'
+                    : saveState.weather === 'cloudy'
+                    ? 'غائم'
+                    : saveState.weather === 'light_rain' || saveState.weather === 'heavy_rain'
+                    ? 'ممطر'
+                    : saveState.weather === 'mountain_fog'
+                    ? 'ضباب'
+                    : 'غبار'}
+                </button>
+              </div>
+
+              {/* Upcoming Urban Traffic Light Signal Alert */}
+              {nearbyTrafficSignal && (
+                <div className="px-3 py-1 rounded-xl bg-slate-950/88 border border-stone-700/80 backdrop-blur-md flex items-center gap-2.5 shadow-xl">
+                  <div className="flex items-center gap-1 bg-black/80 px-1.5 py-0.5 rounded-md border border-stone-800">
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        nearbyTrafficSignal.phase === 'red'
+                          ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'
+                          : 'bg-rose-950'
+                      }`}
+                    />
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        nearbyTrafficSignal.phase === 'yellow'
+                          ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]'
+                          : 'bg-amber-950'
+                      }`}
+                    />
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        nearbyTrafficSignal.phase === 'green'
+                          ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
+                          : 'bg-emerald-950'
+                      }`}
+                    />
+                  </div>
+                  <span className="text-[11px] font-bold text-stone-100">
+                    {nearbyTrafficSignal.nameAr}
+                  </span>
+                  <span className="text-[11px] font-mono-num tabular-nums text-amber-300 font-bold">
+                    {nearbyTrafficSignal.distanceAheadM}م
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold ${
+                      nearbyTrafficSignal.phase === 'red'
+                        ? 'text-rose-400'
+                        : nearbyTrafficSignal.phase === 'yellow'
+                        ? 'text-amber-300'
+                        : 'text-emerald-400'
+                    }`}
+                  >
+                    {nearbyTrafficSignal.phase === 'red'
+                      ? `توقف (${nearbyTrafficSignal.secondsRemaining}ث)`
+                      : nearbyTrafficSignal.phase === 'yellow'
+                      ? `تمهّل (${nearbyTrafficSignal.secondsRemaining}ث)`
+                      : `مسار مفتوح`}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Secondary Collapsible Tools Drawer (Radio + Complete Real Driving Systems) */}
           {toolsExpanded && (
             <div
               dir="rtl"
-              className="fixed top-16 left-1/2 -translate-x-1/2 pointer-events-auto px-3 py-2 rounded-2xl bg-slate-950/90 border border-stone-700 backdrop-blur-md flex flex-wrap items-center gap-2 shadow-2xl z-30"
+              className="fixed top-16 left-1/2 -translate-x-1/2 max-w-[94vw] pointer-events-auto px-3.5 py-2.5 rounded-2xl bg-slate-950/94 border border-stone-700 flex flex-wrap items-center justify-center gap-1.5 shadow-2xl z-30"
             >
+              {/* Toggle In-Game Lo-Fi Yemeni Instrumental Radio Player */}
+              <button
+                type="button"
+                onClick={handleToggleRadioWidget}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 border whitespace-nowrap ${
+                  radioOpen || radioPlaying
+                    ? 'bg-amber-500 text-slate-950 border-amber-300'
+                    : 'bg-stone-900 border-amber-500/50 text-amber-300 hover:bg-stone-800'
+                }`}
+                title="فتح/إغلاق مشغل الراديو اليمني Lo-Fi"
+              >
+                <Radio className="w-3.5 h-3.5" />
+                راديو يمني Lo-Fi: {radioOpen ? 'مفتوح' : radioPlaying ? 'يعمل' : 'مغلق'}
+              </button>
+
+              {/* Engine Start/Stop Ignition */}
               <button
                 type="button"
                 onClick={() => {
                   if (!physicsRef.current) return;
+                  audioRef.current?.init();
+                  const running = physicsRef.current.toggleEngineIgnition();
+                  audioRef.current?.playEngineStarterSound(running);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border whitespace-nowrap ${
+                  telemetry.engineRunning
+                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                    : 'bg-rose-500/25 border-rose-400 text-rose-300'
+                }`}
+              >
+                <Power className="w-3.5 h-3.5" />
+                المحرك: {telemetry.engineRunning ? 'يعمل' : 'مطفأ'}
+              </button>
+
+              {/* Cruise Control + Speed Adjust */}
+              <button
+                type="button"
+                onClick={() => {
+                  physicsRef.current?.toggleCruiseControl();
+                  audioRef.current?.playUiClick(1.1);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border whitespace-nowrap ${
+                  telemetry.cruiseControlEnabled
+                    ? 'bg-sky-500/25 border-sky-400 text-sky-300'
+                    : 'bg-stone-900 border-stone-700 text-stone-300'
+                }`}
+              >
+                <Gauge className="w-3.5 h-3.5" />
+                مثبت سرعة
+                {telemetry.cruiseControlEnabled ? ` (${telemetry.cruiseTargetKmh})` : ''}
+              </button>
+
+              {telemetry.cruiseControlEnabled && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => physicsRef.current?.adjustCruiseSpeed(-5)}
+                    className="px-2 py-1 rounded-lg bg-stone-900 border border-stone-700 text-sky-300 font-mono-num text-[11px] font-bold"
+                  >
+                    -5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => physicsRef.current?.adjustCruiseSpeed(5)}
+                    className="px-2 py-1 rounded-lg bg-stone-900 border border-stone-700 text-sky-300 font-mono-num text-[11px] font-bold"
+                  >
+                    +5
+                  </button>
+                </div>
+              )}
+
+              {/* Left / Hazard / Right Indicators */}
+              <div className="flex items-center gap-1 bg-stone-900/90 p-0.5 rounded-lg border border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!physicsRef.current) return;
+                    const next = !physicsRef.current.rightIndicatorOn;
+                    physicsRef.current.rightIndicatorOn = next;
+                    if (next) physicsRef.current.leftIndicatorOn = false;
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                    telemetry.rightIndicatorOn && !telemetry.leftIndicatorOn
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-stone-400'
+                  }`}
+                  title="إشارة يمين"
+                >
+                  يمين ▸
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!physicsRef.current) return;
+                    const bothOn =
+                      physicsRef.current.leftIndicatorOn &&
+                      physicsRef.current.rightIndicatorOn;
+                    physicsRef.current.leftIndicatorOn = !bothOn;
+                    physicsRef.current.rightIndicatorOn = !bothOn;
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                    telemetry.leftIndicatorOn && telemetry.rightIndicatorOn
+                      ? 'bg-rose-500 text-white'
+                      : 'text-stone-400'
+                  }`}
+                  title="فلشر رباعي"
+                >
+                  فلشر △
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!physicsRef.current) return;
+                    const next = !physicsRef.current.leftIndicatorOn;
+                    physicsRef.current.leftIndicatorOn = next;
+                    if (next) physicsRef.current.rightIndicatorOn = false;
+                  }}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                    telemetry.leftIndicatorOn && !telemetry.rightIndicatorOn
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-stone-400'
+                  }`}
+                  title="إشارة يسار"
+                >
+                  ◂ يسار
+                </button>
+              </div>
+
+              {/* Auto vs Manual Gearbox Switch */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!physicsRef.current) return;
+                  physicsRef.current.transmissionMode =
+                    physicsRef.current.transmissionMode === 'auto'
+                      ? 'manual'
+                      : 'auto';
+                  audioRef.current?.playUiClick(1.1);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap ${
+                  telemetry.transmissionMode === 'manual'
+                    ? 'bg-amber-500/25 border-amber-400 text-amber-300'
+                    : 'bg-stone-900 border-stone-700 text-stone-300'
+                }`}
+              >
+                القير: {telemetry.transmissionMode === 'manual' ? 'يدوي (+/-)' : 'أوتوماتيك'}
+              </button>
+
+              {/* Headlights & Wipers */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!physicsRef.current) return;
+                  manualHeadlightOverrideRef.current = true;
                   physicsRef.current.headlightsOn = !physicsRef.current.headlightsOn;
                 }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border whitespace-nowrap ${
                   telemetry.headlightsOn
                     ? 'bg-amber-500/25 border-amber-400 text-amber-300'
                     : 'bg-stone-900 border-stone-700 text-stone-400'
                 }`}
               >
                 <Lightbulb className="w-3.5 h-3.5" />
-                الأنوار: {telemetry.headlightsOn ? 'مشتغلة' : 'مطفأة'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (!physicsRef.current) return;
-                  const next = !physicsRef.current.leftIndicatorOn;
-                  physicsRef.current.leftIndicatorOn = next;
-                  physicsRef.current.rightIndicatorOn = next;
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
-                  telemetry.leftIndicatorOn && telemetry.rightIndicatorOn
-                    ? 'bg-rose-500/30 border-rose-400 text-rose-300'
-                    : 'bg-stone-900 border-stone-700 text-stone-400'
-                }`}
-              >
-                فلشر رباعي △
+                الأنوار
               </button>
 
               <button
@@ -965,7 +1593,7 @@ export default function App() {
                   if (!physicsRef.current) return;
                   physicsRef.current.wipersOn = !physicsRef.current.wipersOn;
                 }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap ${
                   telemetry.wipersOn
                     ? 'bg-sky-500/25 border-sky-400 text-sky-300'
                     : 'bg-stone-900 border-stone-700 text-stone-400'
@@ -974,6 +1602,7 @@ export default function App() {
                 المسّاحات
               </button>
 
+              {/* 2H / 4H / 4L + Diff Lock */}
               {(['2H', '4H', '4L'] as DrivetrainMode[]).map((dtMode) => (
                 <button
                   key={dtMode}
@@ -1001,13 +1630,69 @@ export default function App() {
                       !physicsRef.current.diffLockActive;
                   }
                 }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                className={`px-2 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap ${
                   telemetry.diffLockActive
                     ? 'bg-amber-500/25 border-amber-400 text-amber-300'
                     : 'bg-stone-900 border-stone-700 text-stone-400'
                 }`}
               >
-                قفل تفاضلي (Diff)
+                Diff Lock
+              </button>
+
+              {/* Real Electronic Assists: ABS / TCS / ESC / HDC */}
+              {(
+                [
+                  ['absEnabled', 'ABS'],
+                  ['tcsEnabled', 'TCS'],
+                  ['escEnabled', 'ESC'],
+                  ['hdcEnabled', 'HDC'],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    if (!physicsRef.current) return;
+                    physicsRef.current.assists[key] =
+                      !physicsRef.current.assists[key];
+                    audioRef.current?.playUiClick(1.05);
+                  }}
+                  className={`px-2 py-1 rounded-lg font-mono-num text-[10px] font-bold border ${
+                    telemetry.assists[key]
+                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                      : 'bg-stone-900 border-stone-700 text-stone-500'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+
+              {/* Driving Realism Quick Cycle */}
+              <button
+                type="button"
+                onClick={() => {
+                  const order: DrivingRealismMode[] = [
+                    'arcade',
+                    'sport',
+                    'simulation',
+                  ];
+                  const next =
+                    order[
+                      (order.indexOf(saveState.drivingRealism) + 1) % order.length
+                    ];
+                  updateAndSave((prev) => ({
+                    ...prev,
+                    drivingRealism: next,
+                  }));
+                }}
+                className="px-2.5 py-1 rounded-lg bg-stone-900 border border-stone-700 text-stone-200 text-[11px] font-bold whitespace-nowrap"
+              >
+                الواقعية:{' '}
+                {saveState.drivingRealism === 'simulation'
+                  ? 'محاكاة'
+                  : saveState.drivingRealism === 'sport'
+                  ? 'رياضي'
+                  : 'أركيد'}
               </button>
 
               <button
@@ -1016,7 +1701,7 @@ export default function App() {
                   physicsRef.current?.resetToRoad();
                   setToolsExpanded(false);
                 }}
-                className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 text-[11px] font-bold flex items-center gap-1"
+                className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 text-[11px] font-bold flex items-center gap-1 whitespace-nowrap"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
                 إعادة للمسار
@@ -1028,10 +1713,10 @@ export default function App() {
                   setToolsExpanded(false);
                   setActiveModal('photo');
                 }}
-                className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-amber-300 text-[11px] font-bold flex items-center gap-1"
+                className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-amber-300 text-[11px] font-bold flex items-center gap-1 whitespace-nowrap"
               >
                 <Aperture className="w-3.5 h-3.5" />
-                وضع التصوير
+                تصوير
               </button>
 
               <button
@@ -1046,6 +1731,7 @@ export default function App() {
                   }))
                 }
                 className="p-1.5 rounded-lg bg-stone-800 text-stone-200"
+                title="كتم/تشغيل الصوت"
               >
                 {saveState.audioMixer.muted ? (
                   <VolumeX className="w-3.5 h-3.5 text-rose-400" />
@@ -1060,7 +1746,7 @@ export default function App() {
                   setToolsExpanded(false);
                   setActiveModal('settings');
                 }}
-                className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center gap-1"
+                className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 text-[11px] font-bold flex items-center gap-1 whitespace-nowrap"
               >
                 <Settings className="w-3.5 h-3.5" />
                 الإعدادات
@@ -1201,13 +1887,28 @@ export default function App() {
               }}
               className="absolute pointer-events-auto"
             >
-              <div className="px-4 py-2 rounded-2xl bg-slate-950/78 border border-stone-700/80 backdrop-blur-md shadow-2xl flex items-center gap-4 min-w-[230px]">
+              <div className="px-4 py-2 rounded-2xl bg-slate-950/88 border border-stone-700/80 shadow-2xl flex items-center gap-3.5 min-w-[250px]">
+                {/* Right Blinker Indicator */}
+                <div
+                  className={`text-sm font-black transition-opacity ${
+                    telemetry.rightIndicatorOn && blinkerPhase
+                      ? 'text-emerald-400 opacity-100'
+                      : 'text-stone-700 opacity-35'
+                  }`}
+                >
+                  ▶
+                </div>
+
                 <div className="text-center">
-                  <div className="text-2xl font-black font-display-num text-stone-100 leading-none">
+                  <div className="text-2xl font-black font-display-num tabular-nums text-stone-100 leading-none">
                     {telemetry.speedKmh}
                   </div>
                   <div className="text-[9px] text-stone-400 font-bold mt-0.5">
-                    كم/س
+                    {!telemetry.engineRunning
+                      ? 'مطفأ'
+                      : telemetry.cruiseControlEnabled
+                      ? `مثبت ${telemetry.cruiseTargetKmh}`
+                      : 'كم/س'}
                   </div>
                 </div>
 
@@ -1222,7 +1923,7 @@ export default function App() {
 
                 <div className="flex-1 space-y-1.5 min-w-[95px]">
                   <div>
-                    <div className="flex justify-between text-[9px] text-stone-400 font-mono-num">
+                    <div className="flex justify-between text-[9px] text-stone-400 font-mono-num tabular-nums">
                       <span>RPM</span>
                       <span>{telemetry.rpm}</span>
                     </div>
@@ -1243,9 +1944,9 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px] font-mono-num">
-                    <span className="text-amber-300">
-                      ⛽ {Math.round(telemetry.fuelLiters)}L
+                  <div className="flex items-center justify-between text-[10px] font-mono-num tabular-nums">
+                    <span className={telemetry.lowFuelWarning ? 'text-rose-400 font-bold' : 'text-amber-300'}>
+                      ⛽ {Math.round(telemetry.fuelLiters)}L · ~{Math.round(telemetry.fuelLiters * 4.2)}كم
                     </span>
                     <span
                       className={
@@ -1258,11 +1959,22 @@ export default function App() {
                     </span>
                   </div>
                 </div>
+
+                {/* Left Blinker Indicator */}
+                <div
+                  className={`text-sm font-black transition-opacity ${
+                    telemetry.leftIndicatorOn && blinkerPhase
+                      ? 'text-emerald-400 opacity-100'
+                      : 'text-stone-700 opacity-35'
+                  }`}
+                >
+                  ◀
+                </div>
               </div>
             </div>
           )}
 
-          {/* 7. SHIFTER (P/R/N/D) + HANDBRAKE CLUSTER */}
+          {/* 7. SHIFTER (Auto P/R/N/D OR Manual +/- Paddles) + HANDBRAKE CLUSTER */}
           {wLayout.shifter_handbrake.visible && (
             <div
               style={{
@@ -1273,26 +1985,58 @@ export default function App() {
               }}
               className="absolute pointer-events-auto flex flex-col items-center gap-2"
             >
-              <div className="flex flex-col gap-1 p-1 rounded-xl bg-slate-950/80 border border-stone-700/80 backdrop-blur-md shadow-xl">
-                {(['D', 'N', 'R', 'P'] as AutomaticShifterState[]).map((st) => (
+              {telemetry.transmissionMode === 'manual' ? (
+                <div className="flex flex-col gap-1 p-1 rounded-xl bg-slate-950/88 border border-amber-500/60 shadow-xl items-center">
                   <button
-                    key={st}
                     type="button"
                     onPointerDown={(e) => {
                       e.stopPropagation();
-                      physicsRef.current?.setAutoShifter(st);
-                      audioRef.current?.playUiClick(st === 'D' ? 1.2 : 0.9);
+                      physicsRef.current?.shiftManualGear(1);
+                      audioRef.current?.playUiClick(1.25);
                     }}
-                    className={`w-8 h-6 rounded-lg font-mono-num text-xs font-black transition ${
-                      telemetry.autoShifter === st
-                        ? 'bg-amber-500 text-slate-950 shadow'
-                        : 'text-stone-400 hover:bg-stone-800'
-                    }`}
+                    className="w-9 h-8 rounded-lg bg-amber-500 text-slate-950 font-mono-num text-sm font-black"
+                    title="رفع الغيار (+)"
                   >
-                    {st}
+                    +
                   </button>
-                ))}
-              </div>
+                  <div className="text-[11px] font-mono-num font-black text-amber-300 py-0.5">
+                    {telemetry.gear}
+                  </div>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      physicsRef.current?.shiftManualGear(-1);
+                      audioRef.current?.playUiClick(0.9);
+                    }}
+                    className="w-9 h-8 rounded-lg bg-stone-800 text-stone-100 font-mono-num text-sm font-black"
+                    title="خفض الغيار (-)"
+                  >
+                    -
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1 p-1 rounded-xl bg-slate-950/85 border border-stone-700/80 shadow-xl">
+                  {(['D', 'N', 'R', 'P'] as AutomaticShifterState[]).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        physicsRef.current?.setAutoShifter(st);
+                        audioRef.current?.playUiClick(st === 'D' ? 1.2 : 0.9);
+                      }}
+                      className={`w-8 h-6 rounded-lg font-mono-num text-xs font-black transition ${
+                        telemetry.autoShifter === st
+                          ? 'bg-amber-500 text-slate-950 shadow'
+                          : 'text-stone-400 hover:bg-stone-800'
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <button
                 type="button"
@@ -1459,12 +2203,118 @@ export default function App() {
         </div>
       )}
 
+      {/* FLOATING IN-GAME LO-FI YEMENI RADIO PLAYER (Toggled via 'Tools' menu) */}
+      {activeModal === 'none' && radioOpen && (
+        <YemeniRadioPlayer
+          settings={{
+            ...(saveState.radioSettings || {
+              isOpen: true,
+              isPlaying: radioPlaying,
+              stationId: 'taiz_oud_lofi',
+              volume: 0.65,
+              lofiVinylEnabled: true,
+            }),
+            isOpen: radioOpen,
+            isPlaying: radioPlaying,
+          }}
+          radioEngine={radioRef.current}
+          onTogglePlay={handleToggleRadioPlay}
+          onSelectStation={handleSelectRadioStation}
+          onNextStation={() => {
+            audioRef.current?.init();
+            const nextId = radioRef.current?.nextStation();
+            if (nextId) handleSelectRadioStation(nextId);
+          }}
+          onPrevStation={() => {
+            audioRef.current?.init();
+            const prevId = radioRef.current?.prevStation();
+            if (prevId) handleSelectRadioStation(prevId);
+          }}
+          onChangeVolume={(vol) => {
+            radioRef.current?.setVolume(vol);
+            updateAndSave((prev) => ({
+              ...prev,
+              radioSettings: { ...prev.radioSettings, volume: vol },
+            }));
+          }}
+          onToggleVinyl={() => {
+            const nextVinyl = !(saveState.radioSettings?.lofiVinylEnabled ?? true);
+            radioRef.current?.setVinylEnabled(nextVinyl);
+            updateAndSave((prev) => ({
+              ...prev,
+              radioSettings: {
+                ...prev.radioSettings,
+                lofiVinylEnabled: nextVinyl,
+              },
+            }));
+          }}
+          onClose={() => {
+            setRadioOpen(false);
+            updateAndSave((prev) => ({
+              ...prev,
+              radioSettings: { ...prev.radioSettings, isOpen: false },
+            }));
+          }}
+        />
+      )}
+
+      {/* MAIN MENU LOBBY (AAA Structured Start Screen over live 3D vehicle) */}
+      {activeModal === 'menu' && (
+        <MainMenuLobby
+          saveState={saveState}
+          radioPlaying={radioPlaying}
+          onStartDriving={() => {
+            audioRef.current?.init();
+            audioRef.current?.playUiClick(1.2);
+            PersistenceManager.requestPersistentStorage().catch(() => {});
+            setActiveModal('none');
+          }}
+          onOpenWorldMap={() => {
+            audioRef.current?.init();
+            audioRef.current?.playUiClick();
+            setActiveModal('world_map');
+          }}
+          onOpenMissions={() => {
+            audioRef.current?.init();
+            audioRef.current?.playUiClick();
+            setActiveModal('missions');
+          }}
+          onOpenGarage={() => {
+            audioRef.current?.init();
+            audioRef.current?.playUiClick();
+            setPreviewVehicleId(saveState.selectedVehicleId);
+            setActiveModal('garage');
+          }}
+          onOpenControlStudio={() => {
+            audioRef.current?.init();
+            audioRef.current?.playUiClick();
+            setActiveModal('control_studio');
+          }}
+          onOpenSettings={() => {
+            audioRef.current?.init();
+            audioRef.current?.playUiClick();
+            setActiveModal('settings');
+          }}
+          onToggleRadioFromLobby={handleToggleRadioPlay}
+        />
+      )}
+
+      {/* INTERACTIVE YEMEN WORLD MAP & FAST TRAVEL MODAL */}
+      {activeModal === 'world_map' && (
+        <YemenWorldMapModal
+          currentDistanceM={telemetry?.distanceAlongRoadM ?? saveState.playerDistanceM}
+          visitedCities={saveState.visitedCities || ['city_taiz_sabir']}
+          onFastTravelToCity={handleFastTravelToCity}
+          onClose={() => setActiveModal('none')}
+        />
+      )}
+
       {/* PAUSE MODAL */}
       {activeModal === 'pause' && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/90 flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-stone-800 p-6 space-y-4 shadow-2xl text-center">
             <div className="text-xs font-bold text-amber-400">
-              مَسَالِك — دروب اليمن | MASALIK v1.0.0 Offline
+              مَسَالِك — دروب اليمن | MASALIK v2.0 Offline
             </div>
             <h2 className="text-xl font-black text-stone-100">
               اللعبة متوقفة مؤقتًا
@@ -1482,6 +2332,18 @@ export default function App() {
               >
                 <Play className="w-4 h-4 fill-current" />
                 استئناف القيادة
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  flushSessionTripToPhoneDb();
+                  setActiveModal('world_map');
+                }}
+                className="w-full py-2.5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2"
+              >
+                <MapPin className="w-4 h-4" />
+                خريطة مدن اليمن والانتقال السريع (10 مدن)
               </button>
 
               <button
@@ -1516,11 +2378,26 @@ export default function App() {
 
               <button
                 type="button"
-                onClick={() => setActiveModal('settings')}
+                onClick={() => {
+                  flushSessionTripToPhoneDb();
+                  setActiveModal('settings');
+                }}
                 className="w-full py-2.5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-bold text-xs flex items-center justify-center gap-2"
               >
                 <Settings className="w-4 h-4 text-sky-400" />
-                الإعدادات، الميكسر الصوتي والحفظ الاحتياطي
+                الإعدادات، الميكسر الصوتي وقاعدة بيانات الهاتف
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  flushSessionTripToPhoneDb();
+                  setActiveModal('menu');
+                }}
+                className="w-full py-2.5 rounded-2xl bg-slate-950 hover:bg-stone-800 border border-stone-800 text-stone-300 font-bold text-xs flex items-center justify-center gap-2"
+              >
+                <Home className="w-4 h-4 text-amber-400" />
+                العودة إلى القائمة الرئيسية
               </button>
             </div>
 
@@ -1787,6 +2664,12 @@ export default function App() {
         <SettingsAndSaveModal
           saveState={saveState}
           onUpdateSaveState={(next) => {
+            if (next.timeOfDay !== saveState.timeOfDay) {
+              const nextHours = presetToWorldTimeHours(next.timeOfDay);
+              worldTimeHoursRef.current = nextHours;
+              manualHeadlightOverrideRef.current = false;
+              next = { ...next, worldTimeHours: nextHours };
+            }
             PersistenceManager.save(next);
             setSaveState(next);
           }}

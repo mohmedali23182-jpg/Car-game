@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   SaveGameSchemaV2,
   GraphicsQuality,
@@ -6,9 +6,12 @@ import {
   TimeOfDayPreset,
   AudioMixerSettings,
   EngineeringTestResult,
+  PhoneDatabaseStats,
+  DrivingRealismMode,
 } from '../game/types';
 import { PersistenceManager } from '../game/persistenceManager';
 import { runEngineeringTestSuite } from '../game/testSuite';
+import { VEHICLE_SPECS } from '../game/vehicleFleet';
 import {
   Settings,
   Volume2,
@@ -21,6 +24,8 @@ import {
   CheckCircle2,
   X,
   Smartphone,
+  ShieldCheck,
+  HardDrive,
 } from 'lucide-react';
 
 interface SettingsAndSaveModalProps {
@@ -48,7 +53,14 @@ export const SettingsAndSaveModal: React.FC<SettingsAndSaveModalProps> = ({
   const [testResults, setTestResults] = useState<EngineeringTestResult[] | null>(
     null
   );
+  const [phoneDbStats, setPhoneDbStats] = useState<PhoneDatabaseStats | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (activeTab === 'save') {
+      PersistenceManager.getPhoneDbStats().then(setPhoneDbStats).catch(() => {});
+    }
+  }, [activeTab, saveState.timestampIso]);
 
   const mixer = saveState.audioMixer;
 
@@ -117,10 +129,10 @@ export const SettingsAndSaveModal: React.FC<SettingsAndSaveModalProps> = ({
 
         <div className="flex items-center gap-2">
           {[
-            { id: 'graphics', label: 'الرسوميات والبيئة', icon: Sun },
+            { id: 'graphics', label: 'الرسوميات والواقعية', icon: Sun },
             { id: 'audio', label: 'الميكسر الصوتي (6 قنوات)', icon: Volume2 },
-            { id: 'save', label: 'الحفظ المحلي والنسخ الاحتياطي', icon: Database },
-            { id: 'diagnostics', label: 'فحص الأنظمة والمطورين', icon: Cpu },
+            { id: 'save', label: 'قاعدة بيانات الهاتف', icon: Database },
+            { id: 'diagnostics', label: 'فحص الأنظمة (10 اختبارات)', icon: Cpu },
           ].map((t) => {
             const Icon = t.icon;
             return (
@@ -196,6 +208,60 @@ export const SettingsAndSaveModal: React.FC<SettingsAndSaveModalProps> = ({
                     }`}
                   >
                     {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-900 border border-stone-800 space-y-3">
+              <div className="text-sm font-bold text-amber-300">
+                مستوى واقعية القيادة والفيزياء (Driving Realism)
+              </div>
+              <div className="grid grid-cols-3 gap-2.5">
+                {(
+                  [
+                    [
+                      'arcade',
+                      'أركيد ميسّر',
+                      'تماسك عالٍ، بدون استهلاك وقود، أضرار مخففة.',
+                    ],
+                    [
+                      'sport',
+                      'رياضي متوازن',
+                      'فيزياء جبلية متوازنة مع تشغيل تلقائي للمحرك.',
+                    ],
+                    [
+                      'simulation',
+                      'محاكاة قيادة واقعية',
+                      'تشغيل محرك يدوي، استهلاك وقود وأضرار وانزلاق واقعي.',
+                    ],
+                  ] as [DrivingRealismMode, string, string][]
+                ).map(([mode, title, desc]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() =>
+                      onUpdateSaveState({
+                        ...saveState,
+                        drivingRealism: mode,
+                      })
+                    }
+                    className={`p-3 rounded-xl text-right border transition ${
+                      saveState.drivingRealism === mode
+                        ? 'bg-amber-500 text-slate-950 border-amber-300'
+                        : 'bg-slate-950 text-stone-200 border-stone-800'
+                    }`}
+                  >
+                    <div className="text-xs font-black">{title}</div>
+                    <div
+                      className={`text-[10px] mt-1 ${
+                        saveState.drivingRealism === mode
+                          ? 'text-slate-900'
+                          : 'text-stone-400'
+                      }`}
+                    >
+                      {desc}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -360,22 +426,131 @@ export const SettingsAndSaveModal: React.FC<SettingsAndSaveModalProps> = ({
 
         {activeTab === 'save' && (
           <div className="space-y-4">
-            <div className="p-5 rounded-2xl bg-slate-900 border border-stone-800 space-y-3">
-              <div className="flex items-center justify-between">
+            {/* On-Device Phone Database Status Card */}
+            <div className="p-5 rounded-2xl bg-slate-900 border border-stone-800 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-sm font-bold text-amber-300">
-                    نظام الحفظ المحلي والنسخ الاحتياطي (MASALIK Local Save System)
+                  <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2">
+                    <Smartphone className="w-4 h-4 text-emerald-400" />
+                    قاعدة بيانات الهاتف المحلية (MASALIK Phone-First Local DB)
                   </h3>
-                  <p className="text-xs text-stone-400">
-                    يتم حفظ التقدم تلقائيًا على جهازك عبر (IndexedDB + LocalStorage) دون الحاجة لأي خادم خارجي.
+                  <p className="text-xs text-stone-400 mt-0.5">
+                    جميع بياناتك (الملف الشخصي، الكراج، المهمات، الراديو، سجل الرحلات) محفوظة مباشرة على ذاكرة هاتفك عبر IndexedDB دون أي خادم خارجي.
                   </p>
                 </div>
-                <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold">
-                  100% Offline Ready
+                <span className="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
+                  100% على الهاتف
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+              {phoneDbStats && (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+                    <div className="p-3 rounded-xl bg-slate-950 border border-stone-800">
+                      <div className="text-[10px] text-stone-400">محرك القاعدة</div>
+                      <div className="font-mono-num font-bold text-amber-300 mt-0.5">
+                        {phoneDbStats.dbName} v{phoneDbStats.schemaVersion}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950 border border-stone-800">
+                      <div className="text-[10px] text-stone-400 flex items-center gap-1">
+                        <HardDrive className="w-3 h-3 text-sky-400" />
+                        المساحة المستخدمة
+                      </div>
+                      <div className="font-mono-num tabular-nums font-bold text-stone-100 mt-0.5">
+                        {phoneDbStats.storageUsedKb} KB / {phoneDbStats.storageQuotaMb} MB
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950 border border-stone-800">
+                      <div className="text-[10px] text-stone-400">حماية ذاكرة الهاتف</div>
+                      <div
+                        className={`font-bold mt-0.5 ${
+                          phoneDbStats.persisted ? 'text-emerald-400' : 'text-amber-300'
+                        }`}
+                      >
+                        {phoneDbStats.persisted ? 'محمية (Persistent)' : 'قياسية (قابلة للتثبيت)'}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-950 border border-stone-800">
+                      <div className="text-[10px] text-stone-400">آخر مزامنة محلية</div>
+                      <div className="font-mono-num tabular-nums font-bold text-stone-200 mt-0.5">
+                        {new Date(phoneDbStats.lastSavedIso).toLocaleTimeString('ar-YE')}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 6 Local Object Stores Table */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                    {(
+                      [
+                        ['player_profile', 'ملف السائق والرصيد'],
+                        ['garage_fleet', 'أسطول الكراج (10 مركبات)'],
+                        ['mission_records', 'سجل المهمات والإنجازات'],
+                        ['settings_hud', 'إعدادات التحكم والرسوم'],
+                        ['radio_preferences', 'محطات راديو Lo-Fi'],
+                        ['driving_logs', 'سجل الرحلات الجبلية'],
+                      ] as const
+                    ).map(([storeKey, label]) => (
+                      <div
+                        key={storeKey}
+                        className="px-3 py-2 rounded-xl bg-slate-950/90 border border-stone-800 flex items-center justify-between"
+                      >
+                        <span className="text-stone-300 font-bold truncate">{label}</span>
+                        <span className="font-mono-num tabular-nums text-emerald-400 font-bold shrink-0">
+                          {phoneDbStats.storeRecordCounts[storeKey] ?? 0} سجل
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {!phoneDbStats.persisted && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await PersistenceManager.requestPersistentStorage();
+                        const updated = await PersistenceManager.getPhoneDbStats();
+                        setPhoneDbStats(updated);
+                        setStatusMessageAr(
+                          ok
+                            ? 'تم تفعيل التخزين الدائم على ذاكرة الهاتف (لن يمسح النظام بياناتك تلقائيًا).'
+                            : 'تمت مزامنة قاعدة بيانات الهاتف بنجاح.'
+                        );
+                      }}
+                      className="px-4 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/50 text-emerald-300 text-xs font-bold flex items-center gap-2"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      تأمين وتثبيت قاعدة البيانات على ذاكرة الهاتف (Persistent Storage)
+                    </button>
+                  )}
+
+                  {/* Recent Trips Log from Phone DB */}
+                  {phoneDbStats.recentTrips.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="text-xs font-bold text-stone-300">
+                        آخر الرحلات المسجلة محليًا في قاعدة الهاتف:
+                      </div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {phoneDbStats.recentTrips.map((trip, idx) => (
+                          <div
+                            key={`${trip.timestampIso}-${idx}`}
+                            className="px-3 py-1.5 rounded-xl bg-slate-950 border border-stone-800 flex items-center justify-between text-[11px]"
+                          >
+                            <span className="text-stone-200 font-bold truncate">
+                              {VEHICLE_SPECS[trip.vehicleId]?.nameAr || trip.vehicleId} ·{' '}
+                              {trip.regionNameAr}
+                            </span>
+                            <span className="font-mono-num tabular-nums text-amber-300 shrink-0">
+                              {trip.distanceKm.toFixed(2)} كم · قصوى {trip.maxSpeedKmh} كم/س
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-stone-800">
                 <button
                   type="button"
                   onClick={handleExportJson}
@@ -418,7 +593,7 @@ export const SettingsAndSaveModal: React.FC<SettingsAndSaveModalProps> = ({
                       onUpdateSaveState(fresh);
                       setConfirmReset(false);
                       setStatusMessageAr(
-                        'تمت إعادة ضبط التقدم إلى الحالة الافتراضية.'
+                        'تمت إعادة ضبط قاعدة البيانات إلى الحالة الافتراضية.'
                       );
                     }}
                     className="p-3.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2"
@@ -468,7 +643,7 @@ export const SettingsAndSaveModal: React.FC<SettingsAndSaveModalProps> = ({
                   onClick={() => setTestResults(runEngineeringTestSuite())}
                   className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold"
                 >
-                  تشغيل فحص الأنظمة (8 اختبارات)
+                  تشغيل فحص الأنظمة (10 اختبارات)
                 </button>
               </div>
 

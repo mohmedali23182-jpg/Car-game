@@ -89,7 +89,75 @@ export type RegionId =
   | 'wadi_rayhan'
   | 'tihama_plains'
   | 'coastal_road'
-  | 'masalik_desert';
+  | 'masalik_desert'
+  | 'sanaa_highlands'
+  | 'ibb_green_peaks'
+  | 'shibam_hadramout';
+
+export type RadioStationId =
+  | 'taiz_oud_lofi'
+  | 'sanaa_qamariya_chill'
+  | 'ibb_rain_oud'
+  | 'aden_coast_breeze'
+  | 'hadramout_dan_lofi';
+
+export interface RadioStationDefinition {
+  id: RadioStationId;
+  frequencyFm: string;
+  nameAr: string;
+  subtitleAr: string;
+  cityAr: string;
+  maqamAr: string;
+  bpm: number;
+  accentHex: string;
+}
+
+export interface RadioPlayerSettings {
+  isOpen: boolean;
+  isPlaying: boolean;
+  stationId: RadioStationId;
+  volume: number; // 0..1
+  lofiVinylEnabled: boolean;
+}
+
+export interface YemenCityHub {
+  id: string;
+  nameAr: string;
+  governorateAr: string;
+  subtitleAr: string;
+  regionId: RegionId;
+  distanceM: number;
+  altitudeM: number;
+  defaultWeather: WeatherPreset;
+  defaultTimeOfDay: TimeOfDayPreset;
+  mapX: number; // 0..100 SVG coordinate
+  mapY: number; // 0..100 SVG coordinate
+  highlightsAr: string[];
+}
+
+export interface DrivingTripLogEntry {
+  id?: number;
+  timestampIso: string;
+  vehicleId: VehicleId;
+  regionId: RegionId;
+  regionNameAr: string;
+  distanceKm: number;
+  maxSpeedKmh: number;
+  durationSec: number;
+}
+
+export interface PhoneDatabaseStats {
+  dbName: string;
+  schemaVersion: number;
+  engineLabelAr: string;
+  indexedDbSupported: boolean;
+  persisted: boolean;
+  storageUsedKb: number;
+  storageQuotaMb: number;
+  storeRecordCounts: Record<string, number>;
+  recentTrips: DrivingTripLogEntry[];
+  lastSavedIso: string;
+}
 
 export type TimeOfDayPreset =
   | 'dawn'
@@ -99,6 +167,16 @@ export type TimeOfDayPreset =
   | 'afternoon'
   | 'sunset'
   | 'night';
+
+export type TrafficSignalPhase = 'green' | 'yellow' | 'red';
+
+export interface NearbyTrafficSignalInfo {
+  id: string;
+  nameAr: string;
+  distanceAheadM: number;
+  phase: TrafficSignalPhase;
+  secondsRemaining: number;
+}
 
 export type WeatherPreset =
   | 'clear'
@@ -307,6 +385,9 @@ export interface VehicleTelemetry {
   wipersOn: boolean;
   leftIndicatorOn: boolean;
   rightIndicatorOn: boolean;
+  cruiseControlEnabled: boolean;
+  cruiseTargetKmh: number;
+  realismMode: DrivingRealismMode;
   throttle: number;
   brake: number;
   clutch: number;
@@ -428,12 +509,16 @@ export interface SaveGameSchemaV2 {
   graphicsQuality: GraphicsQuality;
   hudSettings: HudCustomizationSettings;
   audioMixer: AudioMixerSettings;
+  radioSettings: RadioPlayerSettings;
   musicEnabled: boolean;
   musicVolume: number;
   timeOfDay: TimeOfDayPreset;
+  autoTimeCycleEnabled: boolean;
+  worldTimeHours: number; // Continuous 0.0..24.0 clock
   weather: WeatherPreset;
   playerDistanceM: number;
   lastRegionId: RegionId;
+  visitedCities: string[];
   fuelByVehicle: Record<VehicleId, number>;
   damageByVehicle: Record<VehicleId, DamageState>;
   customizations: Record<VehicleId, VehicleCustomization>;

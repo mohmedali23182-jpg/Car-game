@@ -55,6 +55,7 @@ export class MasalikAudioEngine {
   private isInitialized = false;
   private mixer: AudioMixerSettings = { ...DEFAULT_AUDIO_MIXER };
   private lastGear = 'D1';
+  private radioPlayingOverride = false;
 
   private readonly OUD_SCALE = [
     146.83,
@@ -190,7 +191,12 @@ export class MasalikAudioEngine {
     if (this.musicTimer !== null) return;
     this.musicTimer = window.setInterval(() => {
       if (!this.isInitialized || !this.ctx || !this.masterGain) return;
-      if (this.mixer.muted || !this.mixer.musicEnabled || this.mixer.musicVolume <= 0.01)
+      if (
+        this.radioPlayingOverride ||
+        this.mixer.muted ||
+        !this.mixer.musicEnabled ||
+        this.mixer.musicVolume <= 0.01
+      )
         return;
       if (this.ctx.state === 'suspended') return;
 
@@ -513,6 +519,65 @@ export class MasalikAudioEngine {
 
     osc.start(now);
     osc.stop(now + 0.055);
+  }
+
+  public setRadioPlayingOverride(active: boolean): void {
+    this.radioPlayingOverride = active;
+  }
+
+  public playEngineStarterSound(starting: boolean): void {
+    if (!this.ctx || !this.cockpitFilter || this.mixer.muted) return;
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+    const now = this.ctx.currentTime;
+    if (starting) {
+      // Authentic 3-pulse starter crank + engine catch roar
+      for (let i = 0; i < 3; i++) {
+        const t = now + i * 0.13;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(52 + i * 7, t);
+        osc.frequency.linearRampToValueAtTime(76 + i * 9, t + 0.09);
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.linearRampToValueAtTime(0.11 * this.mixer.engineVolume, t + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.002, t + 0.11);
+        osc.connect(gain);
+        gain.connect(this.cockpitFilter);
+        osc.start(t);
+        osc.stop(t + 0.12);
+      }
+    } else {
+      // Engine shutoff sputter down
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(75, now);
+      osc.frequency.exponentialRampToValueAtTime(22, now + 0.25);
+      gain.gain.setValueAtTime(0.1 * this.mixer.engineVolume, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      osc.connect(gain);
+      gain.connect(this.cockpitFilter);
+      osc.start(now);
+      osc.stop(now + 0.29);
+    }
+  }
+
+  public playBlinkerTick(highPulse: boolean): void {
+    if (!this.ctx || !this.masterGain || this.mixer.muted) return;
+    if (this.ctx.state === 'suspended') return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(highPulse ? 1280 : 940, now);
+    gain.gain.setValueAtTime(0.028 * this.mixer.sfxVolume, now);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.018);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.022);
   }
 
   public setMixer(mixer: Partial<AudioMixerSettings>): void {

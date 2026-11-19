@@ -4,6 +4,7 @@ import {
   RegionId,
   SurfaceType,
   WorldPOI,
+  YemenCityHub,
 } from './types';
 
 export interface RoadSample {
@@ -25,8 +26,8 @@ export interface RoadSample {
   zoneNameAr: string;
 }
 
-export const TOTAL_ROAD_LENGTH_M = 15000; // 15.0 km Open World network
-export const CHUNK_LENGTH_M = 500;        // 30 streaming chunks of 500m each
+export const TOTAL_ROAD_LENGTH_M = 22000; // 22.0 km Open World Yemen network (9 Regions, 10 City Hubs)
+export const CHUNK_LENGTH_M = 500;        // 44 streaming chunks of 500m each
 export const TOTAL_CHUNKS_COUNT = Math.ceil(TOTAL_ROAD_LENGTH_M / CHUNK_LENGTH_M);
 export const MISSION_FINISH_DISTANCE_M = 1920; // Legacy Phase 1 finish marker kept intact
 export const ROAD_WIDTH_M = 10.2;
@@ -95,13 +96,186 @@ export const YEMEN_REGIONS: RegionMetadata[] = [
   },
   {
     id: 'masalik_desert',
-    nameAr: 'صحراء المسالك',
-    subtitleAr: 'كثبان رملية مفتوحة وعواصف غبار وممرات جافة',
+    nameAr: 'صحراء المسالك وسد مأرب',
+    subtitleAr: 'كثبان رملية مفتوحة وواحات مأرب التاريخية وعواصف غبار',
     startM: 12600,
     endM: 15000,
     baseAltitudeM: 480,
     statusAr: 'مكتملة بالكامل (Full Playable)',
     dominantSurfaces: ['sand', 'gravel', 'rock'],
+  },
+  {
+    id: 'sanaa_highlands',
+    nameAr: 'صنعاء القديمة ونقيل يسلح',
+    subtitleAr: 'طريق جبلي شاهق بعمارة القمريات وباب اليمن والقمم السحابية',
+    startM: 15000,
+    endM: 17500,
+    baseAltitudeM: 2250,
+    statusAr: 'مكتملة بالكامل (Full Playable)',
+    dominantSurfaces: ['asphalt', 'rock', 'gravel'],
+  },
+  {
+    id: 'ibb_green_peaks',
+    nameAr: 'مدرجات إب وريمة الخضراء',
+    subtitleAr: 'شلالات جبلية وضباب كثيف ومنعطفات حادة وسط المدرجات الخضراء',
+    startM: 17500,
+    endM: 19800,
+    baseAltitudeM: 2050,
+    statusAr: 'مكتملة بالكامل (Full Playable)',
+    dominantSurfaces: ['asphalt', 'mud', 'dirt'],
+  },
+  {
+    id: 'shibam_hadramout',
+    nameAr: 'شبام وحضرموت (وادي النخيل)',
+    subtitleAr: 'ناطحات السحاب الطينية التاريخية وممرات الوادي الحجرية والرملية',
+    startM: 19800,
+    endM: 22000,
+    baseAltitudeM: 690,
+    statusAr: 'مكتملة بالكامل (Full Playable)',
+    dominantSurfaces: ['asphalt', 'sand', 'gravel'],
+  },
+];
+
+export const YEMEN_CITY_HUBS: YemenCityHub[] = [
+  {
+    id: 'city_taiz_sabir',
+    nameAr: 'تعز — جبل صبر وقلعة القاهرة',
+    governorateAr: 'محافظة تعز',
+    subtitleAr: 'نقطة الانطلاق الرئيسية فوق مدرجات جبل صبر وسوق القمم.',
+    regionId: 'taiz_highlands',
+    distanceM: 60,
+    altitudeM: 1450,
+    defaultWeather: 'clear',
+    defaultTimeOfDay: 'morning',
+    mapX: 28,
+    mapY: 72,
+    highlightsAr: ['مدرجات جبل صبر', 'قرية الحصن الحجرية', 'محطة سفح القمم'],
+  },
+  {
+    id: 'city_naqil_sumarah',
+    nameAr: 'نقيل السحاب وسمارة',
+    governorateAr: 'ممر إب — تعز الجبلي',
+    subtitleAr: 'عقبة جبلية شاهقة بمنعطفات حادة وأنفاق صخرية وسط الغيوم.',
+    regionId: 'naqil_sahab',
+    distanceM: 3250,
+    altitudeM: 1860,
+    defaultWeather: 'mountain_fog',
+    defaultTimeOfDay: 'sunrise',
+    mapX: 35,
+    mapY: 57,
+    highlightsAr: ['أنفاق صخرية', 'مطل السحاب البانورامي', 'منعطفات 4×4'],
+  },
+  {
+    id: 'city_wadi_rayhan',
+    nameAr: 'إب — وادي الريحان والمشنة',
+    governorateAr: 'محافظة إب',
+    subtitleAr: 'وادٍ خصب ومجارٍ مائية وجسور حجرية وطرق حصوية وطينية.',
+    regionId: 'wadi_rayhan',
+    distanceM: 6250,
+    altitudeM: 1120,
+    defaultWeather: 'light_rain',
+    defaultTimeOfDay: 'afternoon',
+    mapX: 39,
+    mapY: 64,
+    highlightsAr: ['جسر الوادي الحجري', 'مغسلة الطين', 'ورشة الوادي'],
+  },
+  {
+    id: 'city_tihama_zabid',
+    nameAr: 'سهول تهامة وزبيد التاريخية',
+    governorateAr: 'سهل تهامة — الحديدة',
+    subtitleAr: 'طريق تجاري سريع واسع بمحاذاة المزارع والسوق الشعبي.',
+    regionId: 'tihama_plains',
+    distanceM: 8850,
+    altitudeM: 220,
+    defaultWeather: 'clear',
+    defaultTimeOfDay: 'noon',
+    mapX: 16,
+    mapY: 54,
+    highlightsAr: ['طريق الشاحنات التجاري', 'سوق تهامة', 'اختبارات السرعة القصوى'],
+  },
+  {
+    id: 'city_aden_mokha_coast',
+    nameAr: 'الساحل الغربي — المخا وخليج عدن',
+    governorateAr: 'عدن — الساحل الغربي',
+    subtitleAr: 'طريق ساحلي مفتوح بمحاذاة البحر الأحمر والمرافئ الصخرية.',
+    regionId: 'coastal_road',
+    distanceM: 11200,
+    altitudeM: 18,
+    defaultWeather: 'clear',
+    defaultTimeOfDay: 'sunset',
+    mapX: 33,
+    mapY: 86,
+    highlightsAr: ['مرفأ الساحل الغربي', 'غروب البحر الأحمر', 'طريق ساحلي سريع'],
+  },
+  {
+    id: 'city_marib_desert',
+    nameAr: 'مأرب — سد مأرب وصحراء المسالك',
+    governorateAr: 'محافظة مأرب',
+    subtitleAr: 'كثبان رملية مفتوحة وواحة صيانة وسط عواصف الصحراء.',
+    regionId: 'masalik_desert',
+    distanceM: 13450,
+    altitudeM: 480,
+    defaultWeather: 'sandstorm',
+    defaultTimeOfDay: 'afternoon',
+    mapX: 55,
+    mapY: 42,
+    highlightsAr: ['كثبان مأرب الرملية', 'واحة المسالك', 'تحديات الدفع الرباعي 4L'],
+  },
+  {
+    id: 'city_sanaa_old',
+    nameAr: 'صنعاء القديمة — باب اليمن',
+    governorateAr: 'أمانة العاصمة صنعاء',
+    subtitleAr: 'الارتفاع الأعلى باللعبة وسط العمارة الصنعانية والقمريات الملونة.',
+    regionId: 'sanaa_highlands',
+    distanceM: 15400,
+    altitudeM: 2250,
+    defaultWeather: 'cloudy',
+    defaultTimeOfDay: 'morning',
+    mapX: 38,
+    mapY: 38,
+    highlightsAr: ['بوابة صنعاء التاريخية', 'مطل جبل نقم', 'نفق نقيل يسلح'],
+  },
+  {
+    id: 'city_naqil_yaslah',
+    nameAr: 'نقيل يسلح — قمة الغيوم',
+    governorateAr: 'صنعاء — ذمار',
+    subtitleAr: 'أحد أخطر وأجمل الطرق الجبلية المعلقة فوق السحاب.',
+    regionId: 'sanaa_highlands',
+    distanceM: 16950,
+    altitudeM: 2490,
+    defaultWeather: 'mountain_fog',
+    defaultTimeOfDay: 'dawn',
+    mapX: 43,
+    mapY: 48,
+    highlightsAr: ['ارتفاع 2490م', 'جسر الغيوم المعلق', 'محطة استراحة القمة'],
+  },
+  {
+    id: 'city_ibb_raymah',
+    nameAr: 'مدرجات ريمة وإب الخضراء',
+    governorateAr: 'ريمة — إب اللواء الأخضر',
+    subtitleAr: 'طرق ضبابية ماطرة تخترق المدرجات الزراعية الجبلية الشاهقة.',
+    regionId: 'ibb_green_peaks',
+    distanceM: 18450,
+    altitudeM: 2080,
+    defaultWeather: 'heavy_rain',
+    defaultTimeOfDay: 'morning',
+    mapX: 25,
+    mapY: 46,
+    highlightsAr: ['شلالات المدرجات', 'طرق طينية زلقة', 'قرية الضباب الجبلية'],
+  },
+  {
+    id: 'city_shibam_hadramout',
+    nameAr: 'شبام حضرموت — ناطحات الطين',
+    governorateAr: 'محافظة حضرموت',
+    subtitleAr: 'وادي حضرموت الساحر بناطحات السحاب الطينية الشاهقة وواحات النخيل.',
+    regionId: 'shibam_hadramout',
+    distanceM: 20600,
+    altitudeM: 690,
+    defaultWeather: 'clear',
+    defaultTimeOfDay: 'sunset',
+    mapX: 78,
+    mapY: 36,
+    highlightsAr: ['ناطحات طين شبام 3D', 'وادي حضرموت', 'استراحة وسوق الدان'],
   },
 ];
 
@@ -207,12 +381,75 @@ export const WORLD_POIS: WorldPOI[] = [
   },
   {
     id: 'poi_desert_oasis_workshop',
-    nameAr: 'واحة وورشة ومغسلة صحراء المسالك',
+    nameAr: 'واحة وورشة ومغسلة صحراء مأرب',
     type: 'workshop',
     regionId: 'masalik_desert',
     distanceM: 13600,
     lateralOffsetM: -9.5,
-    descriptionAr: 'محطة صيانة شاملة وغسيل وإصلاح وسط الكثبان الرملية.',
+    descriptionAr: 'محطة صيانة شاملة وغسيل وإصلاح وسط كثبان مأرب.',
+  },
+  {
+    id: 'poi_sanaa_gate',
+    nameAr: 'بوابة صنعاء القديمة ومطل القمريات',
+    type: 'landmark',
+    regionId: 'sanaa_highlands',
+    distanceM: 15450,
+    lateralOffsetM: -11.0,
+    descriptionAr: 'معلم معماري صنعاني بالقمريات والحجر الحبشي على ارتفاع 2250م.',
+  },
+  {
+    id: 'poi_sanaa_fuel',
+    nameAr: 'محطة وقود واستراحة نقيل يسلح',
+    type: 'fuel',
+    regionId: 'sanaa_highlands',
+    distanceM: 16400,
+    lateralOffsetM: 9.2,
+    descriptionAr: 'تزود بالوقود قبل عبور قمة نقيل يسلح السحابية.',
+  },
+  {
+    id: 'poi_yaslah_viewpoint',
+    nameAr: 'مطل نقيل يسلح فوق السحاب',
+    type: 'viewpoint',
+    regionId: 'sanaa_highlands',
+    distanceM: 17150,
+    lateralOffsetM: 10.5,
+    descriptionAr: 'أعلى إطلالة جبلية في شبكة دروب اليمن.',
+  },
+  {
+    id: 'poi_ibb_terraces_village',
+    nameAr: 'قرية مدرجات ريمة وإب الخضراء',
+    type: 'village',
+    regionId: 'ibb_green_peaks',
+    distanceM: 18350,
+    lateralOffsetM: -13.0,
+    descriptionAr: 'قرية جبلية تحيط بها المدرجات الزراعية والضباب الكثيف.',
+  },
+  {
+    id: 'poi_ibb_car_wash',
+    nameAr: 'مغسلة شلالات اللواء الأخضر',
+    type: 'car_wash',
+    regionId: 'ibb_green_peaks',
+    distanceM: 19200,
+    lateralOffsetM: 8.8,
+    descriptionAr: 'تنظيف فوري للطين والمطر بعد الطرق الجبلية المبتلة.',
+  },
+  {
+    id: 'poi_shibam_towers_landmark',
+    nameAr: 'ناطحات السحاب الطينية — شبام حضرموت',
+    type: 'landmark',
+    regionId: 'shibam_hadramout',
+    distanceM: 20650,
+    lateralOffsetM: -12.5,
+    descriptionAr: 'مدينة شبام التاريخية «مانهاتن الصحراء» في قلب وادي حضرموت.',
+  },
+  {
+    id: 'poi_hadramout_fuel_hub',
+    nameAr: 'محطة وورشة وادي حضرموت الكبرى',
+    type: 'fuel',
+    regionId: 'shibam_hadramout',
+    distanceM: 21550,
+    lateralOffsetM: 9.5,
+    descriptionAr: 'نقطة التزود والصيانة الشاملة في نهاية المسار الشرقي.',
   },
 ];
 
@@ -354,10 +591,28 @@ class OpenWorldRoadNetwork {
       if (s >= 11300 && s <= 11600) return 'sand';
       return 'asphalt';
     }
-    // Masalik Desert: sand dunes, desert gravel, and dry rock canyons
-    if (s >= 13450 && s <= 13850) return 'gravel';
-    if (s >= 14200 && s <= 14450) return 'rock';
-    return 'sand';
+    if (s < 15000) {
+      // Masalik Desert: sand dunes, desert gravel, and dry rock canyons
+      if (s >= 13450 && s <= 13850) return 'gravel';
+      if (s >= 14200 && s <= 14450) return 'rock';
+      return 'sand';
+    }
+    if (s < 17500) {
+      // Sana'a Highlands & Naqil Yaslah: stone-paved / high mountain asphalt & basalt rock
+      if (s >= 16150 && s <= 16450) return 'rock';
+      if (s >= 16850 && s <= 17150) return 'gravel';
+      return 'asphalt';
+    }
+    if (s < 19800) {
+      // Ibb & Raymah Green Peaks: misty asphalt, wet mud & highland dirt
+      if (s >= 18050 && s <= 18450) return 'mud';
+      if (s >= 18900 && s <= 19300) return 'dirt';
+      return 'asphalt';
+    }
+    // Shibam Hadramout Valley: sandstone asphalt, wadi gravel & golden sand
+    if (s >= 20300 && s <= 20750) return 'gravel';
+    if (s >= 21100 && s <= 21450) return 'sand';
+    return 'asphalt';
   }
 
   private buildNetwork(): void {
@@ -381,63 +636,61 @@ class OpenWorldRoadNetwork {
           0.006 * Math.sin(s * 0.019 + 0.7) +
           0.0035 * Math.cos(s * 0.031 - 1.2);
       } else if (reg.id === 'naqil_sahab') {
-        // Tight dramatic mountain switchbacks
-        curv =
-          0.0082 * Math.sin(s * 0.016) +
-          0.0048 * Math.cos(s * 0.029);
+        curv = 0.0082 * Math.sin(s * 0.016) + 0.0048 * Math.cos(s * 0.029);
       } else if (reg.id === 'wadi_rayhan') {
-        // Winding valley river bed
         curv = 0.0052 * Math.sin(s * 0.011) + 0.0032 * Math.sin(s * 0.024);
       } else if (reg.id === 'tihama_plains') {
-        // Long gentle highway curves
         curv = 0.0014 * Math.sin(s * 0.0045);
       } else if (reg.id === 'coastal_road') {
-        // Sweeping coastal curves
         curv = 0.0028 * Math.sin(s * 0.0065) + 0.0018 * Math.cos(s * 0.014);
-      } else {
-        // Desert dune S-sweeps
+      } else if (reg.id === 'masalik_desert') {
         curv = 0.0036 * Math.sin(s * 0.0075) + 0.0024 * Math.cos(s * 0.018);
+      } else if (reg.id === 'sanaa_highlands') {
+        // Dramatic Naqil Yaslah mountain bends
+        curv = 0.0068 * Math.sin(s * 0.014) + 0.0042 * Math.cos(s * 0.026);
+      } else if (reg.id === 'ibb_green_peaks') {
+        // Tight terraced hillside switchbacks
+        curv = 0.0074 * Math.sin(s * 0.017) + 0.0038 * Math.cos(s * 0.03);
+      } else {
+        // Shibam Hadramout wide canyon sweeps
+        curv = 0.0026 * Math.sin(s * 0.007) + 0.0016 * Math.cos(s * 0.015);
       }
 
       curvatures.push(curv);
       heading += curv * this.sampleStepM;
 
-      // Continuous elevation profile across the 6 regions
-      let y = 0;
-      if (s <= 2500) {
-        // Climb from 0m to +230m in Taiz Highlands
-        y =
-          (s / 2500) * 230 +
-          12 * Math.sin(s * 0.007) -
-          6 * Math.cos(s * 0.015);
-      } else if (s <= 3900) {
-        // Steep ascent up Naqil Al-Sahab to peak (+410m)
-        const t = (s - 2500) / 1400;
-        y = 230 + t * 180 + 14 * Math.sin(s * 0.01);
-      } else if (s <= 5200) {
-        // High mountain descent from peak (+410m down to +240m) — Mission 3 truck descent!
-        const t = (s - 3900) / 1300;
-        y = 410 - t * 170 + 8 * Math.sin(s * 0.012);
-      } else if (s <= 7800) {
-        // Wadi Al-Rayhan descent from +240m to +65m with valley undulations
-        const t = (s - 5200) / 2600;
-        y = 240 - t * 175 + 9 * Math.sin(s * 0.018);
-      } else if (s <= 10200) {
-        // Tihama Plains gentle slope from +65m to +12m
-        const t = (s - 7800) / 2400;
-        y = 65 - t * 53 + 2.5 * Math.sin(s * 0.008);
-      } else if (s <= 12600) {
-        // Coastal Road along sea level (+12m to +24m)
-        y = 12 + 8 * Math.sin((s - 10200) * 0.006);
-      } else {
-        // Masalik Desert rolling dunes (+16m up to +145m)
-        const t = (s - 12600) / 2400;
-        y =
-          16 +
-          t * 115 +
-          16 * Math.sin((s - 12600) * 0.015) +
-          7 * Math.cos((s - 12600) * 0.032);
+      // Strictly C1-continuous elevation profile across all 9 Yemeni regions (zero seams!)
+      const elevStops: [number, number][] = [
+        [0, 0],
+        [2500, 230],
+        [3900, 410],
+        [5200, 240],
+        [7800, 65],
+        [10200, 14],
+        [12600, 16],
+        [15000, 132],
+        [17500, 465],
+        [19800, 285],
+        [22000, 145],
+      ];
+      let baseElev = 0;
+      for (let eIdx = 0; eIdx < elevStops.length - 1; eIdx++) {
+        const [s0, y0] = elevStops[eIdx];
+        const [s1, y1] = elevStops[eIdx + 1];
+        if (s >= s0 && s <= s1) {
+          const u = THREE.MathUtils.clamp((s - s0) / (s1 - s0), 0, 1);
+          const smoothU = u * u * (3 - 2 * u);
+          baseElev = THREE.MathUtils.lerp(y0, y1, smoothU);
+          break;
+        }
       }
+      // Smooth global terrain undulation (zero discontinuity anywhere on 22 km)
+      const plainBlendIn = THREE.MathUtils.smoothstep(s, 7400, 8200);
+      const plainBlendOut = 1.0 - THREE.MathUtils.smoothstep(s, 12200, 13000);
+      const undulationScale = 1.0 - 0.65 * plainBlendIn * plainBlendOut;
+      const y =
+        baseElev +
+        (8.5 * Math.sin(s * 0.0065) + 4.2 * Math.sin(s * 0.0145)) * undulationScale;
 
       rawPositions.push(new THREE.Vector3(x, y, z));
       x += Math.sin(heading) * this.sampleStepM;
@@ -467,11 +720,15 @@ class OpenWorldRoadNetwork {
         Math.floor(s / CHUNK_LENGTH_M)
       );
 
-      // Rock-cut tunnels in Naqil Al-Sahab and bridges in Naqil / Wadi Rayhan
+      // Rock-cut tunnels in Naqil Al-Sahab & Naqil Yaslah; bridges across valleys
       const hasTunnel =
-        (s >= 2880 && s <= 3020) || (s >= 4320 && s <= 4440);
+        (s >= 2880 && s <= 3020) ||
+        (s >= 4320 && s <= 4440) ||
+        (s >= 16520 && s <= 16660);
       const hasBridge =
-        (s >= 3580 && s <= 3700) || (s >= 6290 && s <= 6410);
+        (s >= 3580 && s <= 3700) ||
+        (s >= 6290 && s <= 6410) ||
+        (s >= 18650 && s <= 18790);
 
       this.samples.push({
         distanceM: s,
@@ -483,7 +740,10 @@ class OpenWorldRoadNetwork {
         regionId: reg.id,
         regionNameAr: reg.nameAr,
         chunkId,
-        widthM: reg.id === 'tihama_plains' ? 12.0 : ROAD_WIDTH_M,
+        widthM:
+          reg.id === 'tihama_plains' || reg.id === 'shibam_hadramout'
+            ? 12.0
+            : ROAD_WIDTH_M,
         gradePct,
         bankingRad,
         curvature: curvatures[i],

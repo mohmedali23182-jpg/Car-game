@@ -628,10 +628,39 @@ export function createFleetVehicleVisuals(isSoftwareGl: boolean): FleetVehicleVi
   const hoodCameraAnchor = new THREE.Object3D();
   const baseCockpitPos = new THREE.Vector3(-0.42, 1.56, 0.05);
 
-  const headlightSpotLeft = new THREE.SpotLight(0xfffbeb, 0, 82, Math.PI / 4.8, 0.45, 1.4);
-  const headlightSpotRight = new THREE.SpotLight(0xfffbeb, 0, 82, Math.PI / 4.8, 0.45, 1.4);
+  const headlightSpotLeft = new THREE.SpotLight(0xfffbeb, 0, 145, Math.PI / 3.7, 0.55, 1.25);
+  const headlightSpotRight = new THREE.SpotLight(0xfffbeb, 0, 145, Math.PI / 3.7, 0.55, 1.25);
   rootGroup.add(headlightSpotLeft, headlightSpotRight);
   rootGroup.add(headlightSpotLeft.target, headlightSpotRight.target);
+
+  // Soft translucent projected headlight beam cone on the road ahead at dusk/night
+  const beamCanvas = document.createElement('canvas');
+  beamCanvas.width = 128;
+  beamCanvas.height = 256;
+  const bCtx = beamCanvas.getContext('2d');
+  if (bCtx) {
+    const grad = bCtx.createRadialGradient(64, 240, 8, 64, 150, 145);
+    grad.addColorStop(0, 'rgba(255, 251, 220, 0.85)');
+    grad.addColorStop(0.45, 'rgba(254, 240, 175, 0.35)');
+    grad.addColorStop(1, 'rgba(254, 240, 175, 0.0)');
+    bCtx.fillStyle = grad;
+    bCtx.fillRect(0, 0, 128, 256);
+  }
+  const beamTex = new THREE.CanvasTexture(beamCanvas);
+  const headlightBeamPoolMat = new THREE.MeshBasicMaterial({
+    map: beamTex,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const headlightBeamPoolGeo = new THREE.PlaneGeometry(11.5, 34);
+  headlightBeamPoolGeo.rotateX(-Math.PI * 0.5);
+  const headlightBeamPool = new THREE.Mesh(headlightBeamPoolGeo, headlightBeamPoolMat);
+  headlightBeamPool.position.set(0, 0.14, -19.2);
+  headlightBeamPool.visible = false;
+  rootGroup.add(headlightBeamPool);
 
   let currentSpec: VehicleSpec = VEHICLE_SPECS.shahiq;
   let currentCustom: VehicleCustomization = getDefaultCustomizations().shahiq;
@@ -1683,16 +1712,20 @@ export function createFleetVehicleVisuals(isSoftwareGl: boolean): FleetVehicleVi
 
       const spotIntensity =
         headlightsOn && !isSoftwareGl
-          ? (currentCustom.auxLightsInstalled ? 5.8 : 3.5) * damagedFlicker
+          ? (currentCustom.auxLightsInstalled ? 8.8 : 6.2) * damagedFlicker
           : 0;
       headlightSpotLeft.intensity = spotIntensity;
-      headlightSpotRight.intensity = spotIntensity * (damage.bodyHealthPct < 42 ? 0.25 : 1);
+      headlightSpotRight.intensity = spotIntensity * (damage.bodyHealthPct < 42 ? 0.35 : 1);
       if (spotIntensity > 0) {
-        headlightSpotLeft.position.set(-0.65, 1.1, -2.1);
-        headlightSpotRight.position.set(0.65, 1.1, -2.1);
-        headlightSpotLeft.target.position.set(-1.2, 0.2, -30);
-        headlightSpotRight.target.position.set(1.2, 0.2, -30);
+        headlightSpotLeft.position.set(-0.68, 1.15, -2.15);
+        headlightSpotRight.position.set(0.68, 1.15, -2.15);
+        headlightSpotLeft.target.position.set(-1.5, 0.15, -38);
+        headlightSpotRight.target.position.set(1.5, 0.15, -38);
       }
+      headlightBeamPool.visible = headlightsOn;
+      headlightBeamPoolMat.opacity = headlightsOn
+        ? (currentCustom.auxLightsInstalled ? 0.38 : 0.28) * damagedFlicker
+        : 0;
 
       const blinkOn = Math.floor(elapsedSec * 3.2) % 2 === 0;
       indicatorLeftMat.emissiveIntensity = leftIndicatorOn && blinkOn ? 2.6 : 0.1;
@@ -1752,6 +1785,9 @@ export function createFleetVehicleVisuals(isSoftwareGl: boolean): FleetVehicleVi
       gaugeFaceMat.dispose();
       smokeMat.dispose();
       licensePlateMat.dispose();
+      beamTex.dispose();
+      headlightBeamPoolGeo.dispose();
+      headlightBeamPoolMat.dispose();
     },
   };
 }
